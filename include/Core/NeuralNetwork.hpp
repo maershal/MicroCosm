@@ -13,16 +13,18 @@ struct NeuralNetwork {
 
     std::vector<float> weights;
     std::vector<float> biases;
-
+    inline std::mt19937& getGlobalRNG() {
+        static std::mt19937 rng(std::random_device{}());
+        return rng;
+    }
     NeuralNetwork(int inputs, int hidden, int outputs) : inputSize(inputs), hiddenSize(hidden), outputSize(outputs) {
         
         // Init with random weights
-        static std::mt19937 rng(std::random_device{}());
         std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
         weights.resize((inputs * hidden) + (hidden * outputs));
         biases.resize(hidden + outputs);
-
+        auto& rng = getGlobalRNG();
         for(auto& w : weights) w = dist(rng);
         for(auto& b: biases) b = dist(rng);
     }
@@ -63,7 +65,7 @@ struct NeuralNetwork {
     }
 
     void mutate(float mutationRate, float mutationStrength) {
-        static std::mt19937 rng(std::random_device{}());
+        auto& rng = getGlobalRNG();
         std::uniform_real_distribution<float> chance(0.0f, 1.0f);
         std::normal_distribution<float> noise(0.0f, mutationStrength);
 

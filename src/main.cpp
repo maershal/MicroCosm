@@ -93,6 +93,29 @@ SensorData GetSensors(const Agent& agent, const std::vector <SimEntity>& entitie
     return data;
 }
 
+
+std::optional<Agent> TryReproduce (Agent& parent)
+{
+    const float REPRODUCTION_COST = 80.0f;
+    const float REPRODUCTION_THRESHOLD = 150.0f;
+
+    if (parent.energy > REPRODUCTION_THRESHOLD) {
+        parent.energy -= REPRODUCTION_COST;
+
+        Agent child = parent;
+
+        child.energy = 60.0f;
+
+        child.position.x += RandomFloat(-5, 5);
+        child.position.y += RandomFloat(-5, 5);
+
+        child.brain.mutate(0.15f, 0.2f);
+
+        return child;
+    }
+    return std::nullopt;
+}
+
 int main()
 {
     InitWindow(1280, 720, "mikrokosmos - TEST");
@@ -195,9 +218,28 @@ int main()
 
         if(!anyAgentAlive)
         {
-            for (int i=0; i<20; i++) entities.emplace_back(Agent{{RandomFloat(100, 1100), RandomFloat(100, 600)}, {0,0}, 100.0f, RandomFloat(0, 6.28f)});
+            for (int i=0; i<200; i++) entities.emplace_back(Agent{{RandomFloat(100, 1100), RandomFloat(100, 600)}, {0,0}, 100.0f, RandomFloat(0, 6.28f)});
     
         }
+
+        std::vector<SimEntity> babies;
+        for (auto& entity : entities) {
+            if (Agent* agent = std::get_if<Agent>(&entity)) {
+                if (auto child = TryReproduce(*agent)) {
+                    babies.push_back(*child);
+                }
+            }
+        }
+
+        entities.insert(entities.end(), std::make_move_iterator(babies.begin()), std::make_move_iterator(babies.end()));
+        int fruitCount = 0;
+        for (const auto& e : entities) if(std::holds_alternative<Fruit>(e)) fruitCount++;
+
+        if (fruitCount < 40) {
+            entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
+        }
+        
+        
         //Render
         BeginDrawing();
         ClearBackground({20, 20, 20, 255});
@@ -230,4 +272,3 @@ int main()
         CloseWindow();
         return 0;
     }
-    
