@@ -11,7 +11,18 @@
 #include <unordered_set>
 
 enum class Sex{ Male, Female };
+float RandomFloat(float min, float max) {
+    static std::mt19937 mt(std::random_device{}());
+    std::uniform_real_distribution<float> dist(min, max);
+    return dist(mt);
+}
 
+float NormalizeAngle(float angle)
+{
+    while (angle > PI) angle -= 2 * PI;
+    while (angle < -PI) angle += 2 * PI;
+    return angle;
+}
 struct Agent {
     Vector2 position;
     Vector2 velocity;
@@ -32,22 +43,16 @@ struct Poison {
     float damageValue = 50.0f;
 };
 
-using SimEntity = std::variant<Agent, Fruit, Poison>;
-template <class... Ts> struct overloaded : Ts ...{ using Ts::operator()...; };
-template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-
-float RandomFloat(float min, float max) {
-    static std::mt19937 mt(std::random_device{}());
-    std::uniform_real_distribution<float> dist(min, max);
-    return dist(mt);
+Agent CreateRandomAgent(Vector2 pos, float energy = 100.0f) {
+    return Agent{
+        .position = pos,
+        .velocity = {0, 0},
+        .energy = energy,
+        .angle = RandomFloat(0, 6.28f),
+        .sex = (RandomFloat(0, 1) > 0.5f) ? Sex::Male : Sex::Female
+    };
 }
 
-float NormalizeAngle(float angle)
-{
-    while (angle > PI) angle -= 2 * PI;
-    while (angle < -PI) angle += 2 * PI;
-    return angle;
-}
 
 struct SensorData {
     float closestFruitDist = 1.0f; // far 
@@ -61,6 +66,10 @@ struct SensorData {
 
     //closesMateDist/Angle TODO
 };
+using SimEntity = std::variant<Agent, Fruit, Poison>;
+template <class... Ts> struct overloaded : Ts ...{ using Ts::operator()...; };
+template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 
 SensorData GetSensors(const Agent& agent, const std::vector <SimEntity>& entities, float visionRadius) {
     SensorData data;
@@ -184,18 +193,25 @@ int main()
 
     for(int i = 0; i < 100; i++)
     {
-        entities.emplace_back(Agent {
-            .position = {RandomFloat(100, 1180), RandomFloat(100,620)},
-            .velocity = {0, 0},
-            .energy = 100.0f,
-            .angle = RandomFloat(0, 6.28f), //2*PI
-            .sex = (RandomFloat(0,1) > 0.5f) ? Sex::Male : Sex::Female
-        });
+        entities.emplace_back(CreateRandomAgent(
+            {RandomFloat(100, 1180), RandomFloat(100, 620)}
+        ));
     }
 
     for(int i=0; i<50; i++) entities.emplace_back(Fruit{{RandomFloat(50, 1230), RandomFloat(50, 670)}});
-    for(int i=0; i<15; i++) entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
+    for(int i=0; i<15; i++) entities.emplace_back(Poison{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
+    struct Statistics {
+        int totalBirths = 0;
+        int totalDeaths = 0;
+        int generation = 0;
+        int highestPopulation = 0;
+        float averageEnergy = 0.0f;
+        int maleCount = 0;
+        int femaleCount = 0;
+        float totalLifetime = 0.0f;  // Suma czasu życia wszystkich agentów
+    } stats;
 
+float generationTimer = 0.0f;
     const float VISION_RADIUS = 200.0f;
     while(!WindowShouldClose())
     {
@@ -243,6 +259,7 @@ int main()
             if(auto* agent = std::get_if<Agent>(&entities[i])) {
                 if(agent->energy <= 0) {
                     entitiesToRemove.push_back(i); // famine death
+                    stats.totalDeaths++;
                     continue;
                 }
                 for (size_t j = 0; j < entities.size(); ++j) {
@@ -279,9 +296,34 @@ int main()
 
         if(!anyAgentAlive)
         {
-            for (int i=0; i<200; i++) entities.emplace_back(Agent{{RandomFloat(100, 1100), RandomFloat(100, 600)}, {0,0}, 100.0f, RandomFloat(0, 6.28f)});
-    
+            stats.generation++;
+            for (int i = 0; i < 50; i++) {
+                entities.emplace_back(CreateRandomAgent(
+                    {RandomFloat(100, 1100), RandomFloat(100, 600)}
+                ));
+            }
         }
+
+        int agentCount = 0;
+        stats.maleCount = 0;
+        stats.femaleCount = 0;
+        float totalEnergy = 0.0f;
+
+        for (const auto& e : entities) {
+            if (const Agent* a = std::get_if<Agent>(&e)) {
+                agentCount++;
+                totalEnergy += a->energy;
+                if (a->sex == Sex::Male) stats.maleCount++;
+                else stats.femaleCount++;
+            }
+        }
+
+        stats.averageEnergy = agentCount > 0 ? totalEnergy / agentCount : 0.0f;
+        if (agentCount > stats.highestPopulation) stats.highestPopulation = agentCount;
+
+        generationTimer += dt;
+
+
         std::vector<SimEntity> babies;
         std::unordered_set<Agent*> agentsWhoReproduced;
         for (auto& entity : entities) {
@@ -295,6 +337,7 @@ int main()
                     
                     if (auto child = TryReproduceSexual(*mateResult.femaleParent, *mateResult.maleParent)) {
                         babies.push_back(*child);
+                        stats.totalBirths++;
                         agentsWhoReproduced.insert(mateResult.femaleParent);
                         agentsWhoReproduced.insert(mateResult.maleParent);
                     }
@@ -308,6 +351,12 @@ int main()
 
         if (fruitCount < 40) {
             entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
+        }
+        int poisonCount = 0;
+        for (const auto& e : entities) if(std::holds_alternative<Poison>(e)) poisonCount++;
+
+        if (poisonCount < 15) {
+            entities.emplace_back(Poison{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
         }
         
         
@@ -344,7 +393,11 @@ int main()
                     [](const Poison& p) { DrawRectangleV(p.position, {8,8}, PURPLE);}
                 }, entity);
             }
-            DrawText(TextFormat("Entities %i", entities.size()), 10, 10, 20, WHITE);
+            DrawText(TextFormat("Population: %i (M:%i F:%i)", agentCount, stats.maleCount, stats.femaleCount), 10, 10, 20, WHITE);
+            DrawText(TextFormat("Births: %i | Deaths: %i", stats.totalBirths, stats.totalDeaths), 10, 35, 20, GREEN);
+            DrawText(TextFormat("Generation: %i | Peak: %i", stats.generation, stats.highestPopulation), 10, 60, 20, YELLOW);
+            DrawText(TextFormat("Avg Energy: %.1f | Time: %.1fs", stats.averageEnergy, generationTimer), 10, 85, 20, SKYBLUE);
+            DrawText(TextFormat("Fruits: %i | Poisons: %i", fruitCount, poisonCount), 10, 110, 20, ORANGE);
             EndDrawing();
         }
         CloseWindow();
