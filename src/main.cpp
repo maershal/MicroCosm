@@ -35,7 +35,7 @@ struct Agent {
 
 struct Fruit {
     Vector2 position;
-    float energyValue = 30.0f;
+    float energyValue = 50.0f;
 };
 
 struct Poison {
@@ -119,7 +119,7 @@ struct ReproductionResult {
 ReproductionResult FindMate(Agent& agent, std::vector<SimEntity>& entities, float mateRadius) {
     ReproductionResult result;
     
-    const float MATE_ENERGY_THRESHOLD = 120.0f;
+    const float MATE_ENERGY_THRESHOLD = 100.0f;
     
     if (agent.energy < MATE_ENERGY_THRESHOLD) return result;
     
@@ -140,7 +140,7 @@ ReproductionResult FindMate(Agent& agent, std::vector<SimEntity>& entities, floa
         }
     }
     
-    if (closestMate && closestDist < 30.0f) { // Muszą być blisko siebie
+    if (closestMate && closestDist < 50.0f) {
         result.canReproduce = true;
         if (agent.sex == Sex::Male) {
             result.maleParent = &agent;
@@ -208,7 +208,7 @@ int main()
         float averageEnergy = 0.0f;
         int maleCount = 0;
         int femaleCount = 0;
-        float totalLifetime = 0.0f;  // Suma czasu życia wszystkich agentów
+        float totalLifetime = 0.0f;
     } stats;
 
 float generationTimer = 0.0f;
