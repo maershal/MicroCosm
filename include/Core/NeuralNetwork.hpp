@@ -5,6 +5,10 @@
 #include <random>
 #include <iostream>
 
+inline std::mt19937& getGlobalRNG() {
+    static std::mt19937 rng(std::random_device{}());
+    return rng;
+}
 struct NeuralNetwork {
     // Topology
     int inputSize;
@@ -13,10 +17,6 @@ struct NeuralNetwork {
 
     std::vector<float> weights;
     std::vector<float> biases;
-    inline std::mt19937& getGlobalRNG() {
-        static std::mt19937 rng(std::random_device{}());
-        return rng;
-    }
     NeuralNetwork(int inputs, int hidden, int outputs) : inputSize(inputs), hiddenSize(hidden), outputSize(outputs) {
         
         // Init with random weights
@@ -79,4 +79,31 @@ struct NeuralNetwork {
             if (chance(rng) < mutationRate) b += noise(rng);
         }
     }
+
+    static NeuralNetwork Crossover(const NeuralNetwork& parentA, const NeuralNetwork& parentB) {
+        NeuralNetwork child(parentA.inputSize, parentA.hiddenSize, parentA.outputSize);
+        auto& rng = getGlobalRNG();
+
+        std::uniform_int_distribution<int> coinFlip(0, 1);
+
+        for(size_t i = 0; i < child.weights.size(); ++i) {
+            if(coinFlip(rng) == 0) {
+                child.weights[i] = parentA.weights[i];
+            } else {
+                child.weights[i] = parentB.weights[i];
+            }
+        }
+
+        for (size_t i = 0; i < child.biases.size(); ++i) {
+            if (coinFlip(rng) == 0) {
+                child.biases[i] = parentA.biases[i];
+            } else {
+                child.biases[i] = parentB.biases[i];
+            }
+        }
+
+        return child;
+
+    }
+
 };

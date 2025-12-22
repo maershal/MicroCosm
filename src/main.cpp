@@ -8,18 +8,23 @@
 #include <random>
 #include <cmath>
 #include "Core/NeuralNetwork.hpp"
+#include <unordered_set>
+
+enum class Sex{ Male, Female };
+
 struct Agent {
     Vector2 position;
     Vector2 velocity;
     float energy;
     float angle;    //radians
 
+    Sex sex;
     NeuralNetwork brain{5, 8, 2};
 };
 
 struct Fruit {
     Vector2 position;
-    float energyValue = 20.0f;
+    float energyValue = 30.0f;
 };
 
 struct Poison {
@@ -53,6 +58,8 @@ struct SensorData {
     // for debugging
     Vector2 closestFruitPos = {-1, -1};
     Vector2 closestPoisonPos = {-1, -1};
+
+    //closesMateDist/Angle TODO
 };
 
 SensorData GetSensors(const Agent& agent, const std::vector <SimEntity>& entities, float visionRadius) {
@@ -94,26 +101,78 @@ SensorData GetSensors(const Agent& agent, const std::vector <SimEntity>& entitie
 }
 
 
-std::optional<Agent> TryReproduce (Agent& parent)
-{
-    const float REPRODUCTION_COST = 80.0f;
-    const float REPRODUCTION_THRESHOLD = 150.0f;
+struct ReproductionResult {
+    Agent* maleParent = nullptr;
+    Agent* femaleParent = nullptr;
+    bool canReproduce = false;
+};
 
-    if (parent.energy > REPRODUCTION_THRESHOLD) {
-        parent.energy -= REPRODUCTION_COST;
-
-        Agent child = parent;
-
-        child.energy = 60.0f;
-
-        child.position.x += RandomFloat(-5, 5);
-        child.position.y += RandomFloat(-5, 5);
-
-        child.brain.mutate(0.15f, 0.2f);
-
-        return child;
+ReproductionResult FindMate(Agent& agent, std::vector<SimEntity>& entities, float mateRadius) {
+    ReproductionResult result;
+    
+    const float MATE_ENERGY_THRESHOLD = 120.0f;
+    
+    if (agent.energy < MATE_ENERGY_THRESHOLD) return result;
+    
+    float closestDist = mateRadius;
+    Agent* closestMate = nullptr;
+    
+    for (auto& entity : entities) {
+        if (Agent* other = std::get_if<Agent>(&entity)) {
+            if (other == &agent) continue;
+            if (other->sex == agent.sex) continue; // Musi być przeciwna płeć
+            if (other->energy < MATE_ENERGY_THRESHOLD) continue;
+            
+            float dist = Vector2Distance(agent.position, other->position);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestMate = other;
+            }
+        }
     }
-    return std::nullopt;
+    
+    if (closestMate && closestDist < 30.0f) { // Muszą być blisko siebie
+        result.canReproduce = true;
+        if (agent.sex == Sex::Male) {
+            result.maleParent = &agent;
+            result.femaleParent = closestMate;
+        } else {
+            result.maleParent = closestMate;
+            result.femaleParent = &agent;
+        }
+    }
+    
+    return result;
+}
+
+std::optional<Agent> TryReproduceSexual(Agent& mother, Agent& father) {
+    const float REPRODUCTION_COST_MOTHER = 100.0f;
+    const float REPRODUCTION_COST_FATHER = 40.0f;
+    const float REPRODUCTION_THRESHOLD = 120.0f;
+    
+    if (mother.energy < REPRODUCTION_THRESHOLD || father.energy < REPRODUCTION_THRESHOLD) {
+        return std::nullopt;
+    }
+    
+    mother.energy -= REPRODUCTION_COST_MOTHER;
+    father.energy -= REPRODUCTION_COST_FATHER;
+    
+    Agent child;
+    child.brain = NeuralNetwork::Crossover(mother.brain, father.brain);
+    
+    child.brain.mutate(0.1f, 0.15f);
+    
+    child.position = mother.position;
+    child.position.x += RandomFloat(-10, 10);
+    child.position.y += RandomFloat(-10, 10);
+    
+    child.velocity = {0, 0};
+    child.energy = 80.0f;
+    child.angle = RandomFloat(0, 6.28f);
+    
+    child.sex = (RandomFloat(0, 1) > 0.5f) ? Sex::Male : Sex::Female;
+    
+    return child;
 }
 
 int main()
@@ -129,17 +188,19 @@ int main()
             .position = {RandomFloat(100, 1180), RandomFloat(100,620)},
             .velocity = {0, 0},
             .energy = 100.0f,
-            .angle = RandomFloat(0, 6.28f)  //2*PI
+            .angle = RandomFloat(0, 6.28f), //2*PI
+            .sex = (RandomFloat(0,1) > 0.5f) ? Sex::Male : Sex::Female
         });
     }
 
     for(int i=0; i<50; i++) entities.emplace_back(Fruit{{RandomFloat(50, 1230), RandomFloat(50, 670)}});
+    for(int i=0; i<15; i++) entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
 
     const float VISION_RADIUS = 200.0f;
     while(!WindowShouldClose())
     {
         float dt = GetFrameTime();
-
+        // Move and Thinking
         for(auto& entity : entities) {
             if (Agent* agent = std::get_if<Agent>(&entity)) {
                 SensorData senses = GetSensors(*agent, entities, VISION_RADIUS);
@@ -173,10 +234,10 @@ int main()
                 if(agent-> position.y < 0) agent -> position.y = 720;
                 if(agent -> position.y > 720) agent -> position.y = 0;
 
-                agent -> energy -= 10.0f * dt;
+                agent -> energy -= 10.0f * dt;  // Metabolism
             }
         }
-
+        // Eating and birth
         std::vector<size_t> entitiesToRemove; 
         for (size_t i = 0; i < entities.size(); ++i) {
             if(auto* agent = std::get_if<Agent>(&entities[i])) {
@@ -221,12 +282,22 @@ int main()
             for (int i=0; i<200; i++) entities.emplace_back(Agent{{RandomFloat(100, 1100), RandomFloat(100, 600)}, {0,0}, 100.0f, RandomFloat(0, 6.28f)});
     
         }
-
         std::vector<SimEntity> babies;
+        std::unordered_set<Agent*> agentsWhoReproduced;
         for (auto& entity : entities) {
             if (Agent* agent = std::get_if<Agent>(&entity)) {
-                if (auto child = TryReproduce(*agent)) {
-                    babies.push_back(*child);
+                if (agent->sex != Sex::Female) continue;
+                if (agentsWhoReproduced.count(agent) > 0) continue;
+                auto mateResult = FindMate(*agent, entities, 150.0f);
+                
+                if (mateResult.canReproduce) {
+                    if (agentsWhoReproduced.count(mateResult.maleParent) > 0) continue;
+                    
+                    if (auto child = TryReproduceSexual(*mateResult.femaleParent, *mateResult.maleParent)) {
+                        babies.push_back(*child);
+                        agentsWhoReproduced.insert(mateResult.femaleParent);
+                        agentsWhoReproduced.insert(mateResult.maleParent);
+                    }
                 }
             }
         }
@@ -247,12 +318,19 @@ int main()
         for (const auto& entity : entities) {
             std::visit(overloaded {
                 [&](const Agent& a ) {
-                    Color col = (a.energy > 50) ? SKYBLUE : ORANGE;
+                    Color col;
+                    if (a.sex == Sex::Male) {
+                        col = (a.energy > 50) ? BLUE : DARKBLUE;
+                    } else {
+                        col = (a.energy > 50) ? PINK : MAROON;
+                    }
                     DrawCircleV(a.position, 6.0f, col);
 
                     Vector2 head = {a.position.x + cos(a.angle)*10, a.position.y + sin(a.angle)*10 };
                     DrawLineV(a.position, head, WHITE);
-
+                    if (a.energy > 120.0f) {
+                        DrawCircle(a.position.x, a.position.y, 12.0f, {255, 255, 255, 30});
+                    }
                     // DEBUGGING - SHOW WHAT AGENT SEES (lines to goal)
                     // We had to again calculate sensors only for drawing (costly but nice);
 
