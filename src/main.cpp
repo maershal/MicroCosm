@@ -5,11 +5,15 @@
 #include <concepts>
 #include <variant>
 #include <random>
+#include <cmath>
+#include "Core/NeuralNetwork.hpp"
 struct Agent {
     Vector2 position;
     Vector2 velocity;
     float energy;
-    float angle;
+    float angle;    //radians
+
+    NeuralNetwork brain{5, 8, 2};
 };
 
 struct Fruit {
@@ -43,41 +47,81 @@ int main()
     for(int i = 0; i < 100; i++)
     {
         entities.emplace_back(Agent {
-            .position = {RandomFloat(0, 1280), RandomFloat(0,720)},
+            .position = {RandomFloat(100, 1180), RandomFloat(100,620)},
             .velocity = {0, 0},
             .energy = 100.0f,
-            .angle = RandomFloat(0, 360)
+            .angle = RandomFloat(0, 6.28f)  //2*PI
         });
     }
 
-    for(int i=0; i<50; i++) entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
-    for(int i=0; i<20; i++) entities.emplace_back(Fruit{{RandomFloat(0, 1280), RandomFloat(0, 720)}});
-
+    for(int i=0; i<50; i++) entities.emplace_back(Fruit{{RandomFloat(50, 1230), RandomFloat(50, 670)}});
     while(!WindowShouldClose())
     {
+        float dt = GetFrameTime();
+
+        for (auto& entity: entities) {
+            std::visit(overloaded{
+                [&](Agent& a) {
+                    //1. Gathering Data (sensors)
+                    // So far mock data, TODO raycasting
+                    std::vector<float> sensors = {
+                        0.5f,   // some food right
+                        0.2f,   // near
+                        -0.1f,  //poison near
+                        1.0f, // far away
+                        a.energy / 100.0f // Energy
+                    };
+                    // 2. Thinking
+                    std::vector<float> outputs = a.brain.feedForward(sensors);
+
+                    float leftTrack = outputs[0];
+                    float rightTrack = outputs[1];
+
+                    //3. Physics
+                    float rotSpeed = 3.0f; 
+                    float speed = 100.0f;
+
+                    a.angle += (leftTrack - rightTrack) * rotSpeed * dt;
+
+                    Vector2 forward = {cos(a.angle), sin(a.angle)};
+                    float throttle = (leftTrack + rightTrack) / 2.0f;
+
+                    a.position.x += forward.x * throttle * speed * dt;
+                    a.position.y += forward.y * throttle * speed * dt;
+
+                    //Wall boucning
+                    if(a.position.x < 0) a.position.x = 1280;
+                    if(a.position.x > 1280) a.position.x = 0;
+                    if(a.position.y < 0) a.position.y = 720;
+                    if(a.position.y > 720) a.position.y = 0;
+                    //metabolism
+                    a.energy -= 5.0f * dt;
+            }, [](auto&){} //other objects do not think
+        } ,entity);
+        }
         BeginDrawing();
         ClearBackground({20, 20, 20, 255});
 
-        for(const auto& entity : entities)
-        {
-            std::visit(overloaded {
-                [](const Agent& a) {
-                    DrawCircleV(a.position, 5.0f, BLUE);
+        // RENDER
 
-                    DrawLine(a.position.x, a.position.y, 
-                    a.position.x + cos(a.angle) * 10,
-                     a.position.y + sin(a.angle) * 10,
-                    SKYBLUE);
-                },
-                [](const Fruit& f) {
-                    DrawCircleV(f.position, 3.0f, GREEN);
-                },
-                [](const Poison& p) {
-                    DrawRectangleV(p.position, {6, 6}, PURPLE);
-                }
-            }, entity);
+        for(const auto& entity : entities) {
+            std::visit(overloaded{
+                [](const Agent& a) {
+                Color col = (a.energy > 50 ) ? BLUE : RED;
+                DrawCircleV(a.position, 6.0f, col);
+
+                DrawLine(a.position.x, a.position.y, 
+                    a.position.x + cos(a.angle)*15, a.position.y + sin(a.angle)*15, RAYWHITE);
+            }, 
+            [](const Fruit& f) {
+                DrawCircleV(f.position, 4.0f, GREEN);
+            },
+            [](const Poison& p) {
+                DrawRectangleV(p.position, {8, 8}, PURPLE);
+            }
+        }, entity);
         }
-        DrawText(TextFormat("Entities %i", entities.size()), 10, 10, 20, RAYWHITE);
+        DrawText("Agents are controlled by Neural Network!", 10, 10, 20, LIGHTGRAY);
         EndDrawing();
     }
     CloseWindow();
