@@ -2,10 +2,12 @@
 #include "World.hpp"
 #include "Config.hpp"
 
+#include "rlImGui.h"
+#include "imgui.h"
 int main() {
     InitWindow(Config::SCREEN_W, Config::SCREEN_H, "Mikrokosmos - Evolution Sim");
     SetTargetFPS(Config::FPS);
-
+    
     World world;
 
     while (!WindowShouldClose()) {
