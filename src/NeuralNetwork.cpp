@@ -15,8 +15,8 @@ NeuralNetwork::NeuralNetwork(int inp, int hid, int out)
 }
 
 std::vector<float> NeuralNetwork::FeedForward(const std::vector<float>& inputs) const {
-    std::vector<float> hidden(hiddenSize);
-    std::vector<float> output(outputSize);
+    std::vector<float> hidden(hiddenSize, 0.0f);
+    std::vector<float> output(outputSize, 0.0f);
     
     int wIdx = 0;
     int bIdx = 0;

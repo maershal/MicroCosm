@@ -20,6 +20,8 @@ namespace Config {
     constexpr int GRID_CELL_SIZE = 50;
     constexpr int GRID_W = SCREEN_W / GRID_CELL_SIZE + 1;
     constexpr int GRID_H = SCREEN_H / GRID_CELL_SIZE + 1;
+
+    constexpr int ACTIVE_AGENTS = 20;
 }
 
 inline std::mt19937& GetRNG() {

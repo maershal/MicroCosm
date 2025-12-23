@@ -19,6 +19,9 @@ struct Stats {
     int deaths = 0;
     float time = 0;
     int maxPop = 0;
+    float avgFitness = 0.0f;
+    float bestFitness = 0.0f;
+    float totalFitness = 0.0f;
 };
 
 struct SensorData {
@@ -26,6 +29,14 @@ struct SensorData {
     float fruitAngle = 0.0f;
     float poisonDist = 1.0f;
     float poisonAngle = 0.0f;
+};
+
+struct GeneticRecord {
+    NeuralNetwork brain;
+    float fitness;
+
+    GeneticRecord(const NeuralNetwork& b, float f)
+    : brain(b), fitness(f) {}
 };
 
 class World {
@@ -47,4 +58,6 @@ private:
     
     template <typename T>
     void CleanupEntities(std::vector<T>& entities);
+
+    std::vector<GeneticRecord> savedGenetics; // best genes with fitness!
 };
