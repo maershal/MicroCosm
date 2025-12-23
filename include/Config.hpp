@@ -22,6 +22,16 @@ namespace Config {
     constexpr int GRID_H = SCREEN_H / GRID_CELL_SIZE + 1;
 
     inline int ACTIVE_AGENTS = 20;
+
+    inline float SPEED_ENERGY_MULTIPLIER = 1.5f;
+    inline float SIZE_SPEED_MULTIPLIER = 0.8f;
+
+    inline float LEARNING_RATE = 0.01f;
+    inline bool ENABLE_LIFETIME_LEARNING = true;
+
+    inline bool OBSTACLES_ENABLED = true;
+    inline int OBSTACLE_COUNT = 5;
+
 }
 
 inline std::mt19937& GetRNG() {

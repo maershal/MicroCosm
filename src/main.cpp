@@ -11,23 +11,12 @@ struct UIState {
     bool godMode = false;
     bool showNeuralViz = false;
     bool showAgentStats = false;
-    bool showHeatmap = false;
+    bool showPhenotypePanel = false;
     int selectedAgentIdx = -1;
     
-    // God Mode tools
     enum class SpawnTool { None, Fruit, Poison, Agent, Erase };
     SpawnTool currentTool = SpawnTool::None;
     
-    // Initial conditions
-    struct InitialConditions {
-        int startingAgents = 80;
-        int startingFruits = 60;
-        int startingPoisons = 20;
-        float mutationRate = 0.15f;
-        float mutationStrength = 0.08f;
-    } initConditions;
-    
-    // Camera
     Camera2D camera = {0};
     bool freeCam = false;
 };
@@ -38,7 +27,6 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
     float nodeRadius = 8.0f;
     float layerSpacing = size.x / 3.0f;
     
-    // Input layer
     int inputCount = brain.inputSize;
     float inputSpacing = size.y / (inputCount + 1);
     std::vector<ImVec2> inputNodes;
@@ -48,7 +36,6 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
         draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(100, 200, 255, 200));
     }
     
-    // Hidden layer
     int hiddenCount = brain.hiddenSize;
     float hiddenSpacing = size.y / (hiddenCount + 1);
     std::vector<ImVec2> hiddenNodes;
@@ -58,7 +45,6 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
         draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(255, 200, 100, 200));
     }
     
-    // Output layer
     int outputCount = brain.outputSize;
     float outputSpacing = size.y / (outputCount + 1);
     std::vector<ImVec2> outputNodes;
@@ -68,7 +54,6 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
         draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(100, 255, 150, 200));
     }
     
-    // Draw connections (input -> hidden)
     int wIdx = 0;
     for (int h = 0; h < hiddenCount; ++h) {
         for (int i = 0; i < inputCount; ++i) {
@@ -79,7 +64,6 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
         }
     }
     
-    // Draw connections (hidden -> output)
     for (int o = 0; o < outputCount; ++o) {
         for (int h = 0; h < hiddenCount; ++h) {
             float w = brain.weights[wIdx++];
@@ -90,8 +74,48 @@ void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
     }
 }
 
+void DrawPhenotypePanel(UIState& ui, World& world) {
+    ImGui::Begin("Phenotype Evolution", &ui.showPhenotypePanel);
+    
+    ImGui::Text("Population Averages:");
+    ImGui::Separator();
+    
+    ImGui::Text("Average Speed: %.2f", world.stats.avgSpeed);
+    ImGui::ProgressBar((world.stats.avgSpeed - 0.5f) / 1.5f);
+    
+    ImGui::Text("Average Size: %.2f", world.stats.avgSize);
+    ImGui::ProgressBar((world.stats.avgSize - 0.7f) / 0.8f);
+    
+    ImGui::Text("Average Efficiency: %.2f", world.stats.avgEfficiency);
+    ImGui::ProgressBar((world.stats.avgEfficiency - 0.7f) / 0.6f);
+    
+    ImGui::Separator();
+    ImGui::Text("Trade-off Parameters:");
+    
+    ImGui::SliderFloat("Speed->Energy Cost", &Config::SPEED_ENERGY_MULTIPLIER, 1.0f, 3.0f);
+    ImGui::SliderFloat("Size->Speed Penalty", &Config::SIZE_SPEED_MULTIPLIER, 0.5f, 1.5f);
+    
+    ImGui::Separator();
+    
+    if (ui.selectedAgentIdx >= 0 && ui.selectedAgentIdx < (int)world.agents.size()) {
+        Agent& agent = world.agents[ui.selectedAgentIdx];
+        if (agent.active) {
+            ImGui::Text("Selected Agent Phenotype:");
+            ImGui::Text("Speed: %.2f", agent.phenotype.speed);
+            ImGui::Text("Size: %.2f", agent.phenotype.size);
+            ImGui::Text("Efficiency: %.2f", agent.phenotype.efficiency);
+            ImGui::Separator();
+            ImGui::Text("Actual Speed: %.2f", agent.phenotype.GetActualSpeed());
+            ImGui::Text("Metabolic Rate: %.2f", agent.phenotype.GetMetabolicRate());
+            ImGui::Text("Visual Size: %.1f", agent.phenotype.GetVisualSize());
+        }
+    }
+    
+    ImGui::End();
+}
+
 void DrawGodModePanel(UIState& ui, World& world) {
-    ImGui::Begin("🌟 God Mode", &ui.godMode);
+    ImGui::Begin("God Mode", &ui.godMode);
     
     ImGui::Text("Click on world to spawn/modify");
     ImGui::Separator();
@@ -101,6 +125,23 @@ void DrawGodModePanel(UIState& ui, World& world) {
     if (ImGui::Combo("Tool", &currentTool, tools, 5)) {
         ui.currentTool = (UIState::SpawnTool)currentTool;
     }
+    
+    ImGui::Separator();
+    ImGui::Text("Obstacle Controls:");
+    
+    if (ImGui::Button("Random Obstacles")) {
+        world.GenerateRandomObstacles();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Generate Maze")) {
+        world.GenerateMaze();
+    }
+    
+    if (ImGui::Button("Clear Obstacles")) {
+        world.ClearObstacles();
+    }
+    
+    ImGui::SliderInt("Obstacle Count", &Config::OBSTACLE_COUNT, 0, 20);
     
     ImGui::Separator();
     ImGui::Text("Quick Actions:");
@@ -161,7 +202,7 @@ void DrawGodModePanel(UIState& ui, World& world) {
 }
 
 void DrawAgentStatsPanel(UIState& ui, World& world) {
-    ImGui::Begin("📊 Agent Statistics", &ui.showAgentStats);
+    ImGui::Begin("Agent Statistics", &ui.showAgentStats);
     
     if (world.agents.empty()) {
         ImGui::Text("No active agents");
@@ -169,17 +210,17 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
         return;
     }
     
-    // Agent list
     ImGui::Text("Select Agent:");
     ImGui::BeginChild("AgentList", ImVec2(0, 200), true);
     
     for (size_t i = 0; i < world.agents.size(); ++i) {
         if (!world.agents[i].active) continue;
         
-        char label[64];
-        snprintf(label, 64, "Agent #%zu [%s] E:%.0f", i, 
+        char label[128];
+        snprintf(label, 128, "Agent #%zu [%s] E:%.0f S:%.1f", i, 
                  world.agents[i].sex == Sex::Male ? "M" : "F",
-                 world.agents[i].energy);
+                 world.agents[i].energy,
+                 world.agents[i].phenotype.speed);
         
         if (ImGui::Selectable(label, ui.selectedAgentIdx == (int)i)) {
             ui.selectedAgentIdx = i;
@@ -188,7 +229,6 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
     
     ImGui::EndChild();
     
-    // Selected agent details
     if (ui.selectedAgentIdx >= 0 && ui.selectedAgentIdx < (int)world.agents.size()) {
         Agent& agent = world.agents[ui.selectedAgentIdx];
         
@@ -207,6 +247,8 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
             ImGui::Text("Children: %d", agent.childrenCount);
             ImGui::Text("Fruits Eaten: %d", agent.fruitsEaten);
             ImGui::Text("Poisons Avoided: %d", agent.poisonsAvoided);
+            ImGui::Text("Obstacles Hit: %d", agent.obstaclesHit);
+            ImGui::Text("Total Reward: %.2f", agent.totalReward);
             ImGui::Text("Fitness: %.2f", agent.CalculateFitness());
             
             ImGui::Separator();
@@ -228,6 +270,10 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
             if (ImGui::Button("View Neural Network")) {
                 ui.showNeuralViz = true;
             }
+            
+            if (ImGui::Button("View Phenotype")) {
+                ui.showPhenotypePanel = true;
+            }
         }
     }
     
@@ -235,7 +281,7 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
 }
 
 void DrawNeuralVizPanel(UIState& ui, World& world) {
-    ImGui::Begin("🧠 Neural Network Visualization", &ui.showNeuralViz, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin(" Neural Network Visualization", &ui.showNeuralViz, ImGuiWindowFlags_AlwaysAutoResize);
     
     if (ui.selectedAgentIdx >= 0 && ui.selectedAgentIdx < (int)world.agents.size()) {
         Agent& agent = world.agents[ui.selectedAgentIdx];
@@ -258,6 +304,12 @@ void DrawNeuralVizPanel(UIState& ui, World& world) {
             ImGui::Text("Output: %d neurons", agent.brain.outputSize);
             ImGui::Text("Total weights: %zu", agent.brain.weights.size());
             ImGui::Text("Total biases: %zu", agent.brain.biases.size());
+            
+            if (Config::ENABLE_LIFETIME_LEARNING) {
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Lifetime Learning: ENABLED");
+                ImGui::Text("Learning Rate: %.4f", Config::LEARNING_RATE);
+            }
         } else {
             ImGui::Text("Selected agent is no longer active");
         }
@@ -286,7 +338,6 @@ void HandleGodModeInput(UIState& ui, World& world) {
                 world.agents.emplace_back(mouseWorld);
                 break;
             case UIState::SpawnTool::Erase: {
-                // Erase nearby entities
                 float eraseRadius = 30.0f;
                 for (auto& f : world.fruits) {
                     if (f.active && Vector2Distance(f.pos, mouseWorld) < eraseRadius) {
@@ -313,7 +364,7 @@ void HandleGodModeInput(UIState& ui, World& world) {
 }
 
 int main() {
-    InitWindow(Config::SCREEN_W, Config::SCREEN_H, "Mikrokosmos - Evolution Sim");
+    InitWindow(Config::SCREEN_W, Config::SCREEN_H, "MicroCosm - Enhanced Evolution Sim");
     SetTargetFPS(Config::FPS);
     
     rlImGuiSetup(true);
@@ -330,7 +381,6 @@ int main() {
         float rawDt = GetFrameTime();
         float dt = ui.paused ? 0.0f : rawDt * ui.timeScale;
         
-        // Camera controls
         if (ui.freeCam) {
             if (IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
                 Vector2 delta = GetMouseDelta();
@@ -353,6 +403,9 @@ int main() {
 
         BeginMode2D(ui.camera);
 
+        // Draw obstacles first
+        world.Draw();
+
         // Draw entities
         for (const auto& f : world.fruits) {
             if (f.active) DrawCircleV(f.pos, 3.0f, {0, 228, 48, 255});
@@ -369,16 +422,17 @@ int main() {
             if (alpha < 0.2f) alpha = 0.2f;
             col.a = (unsigned char)(alpha * 255);
 
-            DrawCircleV(a.pos, 5.0f, col);
+            float visualSize = a.phenotype.GetVisualSize();
+            DrawCircleV(a.pos, visualSize, col);
             
-            Vector2 head = { a.pos.x + cos(a.angle)*8, a.pos.y + sin(a.angle)*8 };
+            Vector2 head = { a.pos.x + cos(a.angle)*(visualSize + 3), 
+                            a.pos.y + sin(a.angle)*(visualSize + 3) };
             DrawLineV(a.pos, head, {255,255,255,100});
 
             if (a.targetFruit.x != -1) DrawLineV(a.pos, a.targetFruit, {0, 255, 0, 30});
             if (a.targetPoison.x != -1) DrawLineV(a.pos, a.targetPoison, {255, 0, 0, 30});
         }
         
-        // Highlight selected agent
         if (ui.selectedAgentIdx >= 0 && ui.selectedAgentIdx < (int)world.agents.size()) {
             Agent& agent = world.agents[ui.selectedAgentIdx];
             if (agent.active) {
@@ -386,7 +440,6 @@ int main() {
             }
         }
         
-        // Draw god mode cursor
         if (ui.godMode && ui.currentTool != UIState::SpawnTool::None) {
             Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), ui.camera);
             DrawCircleLines(mouseWorld.x, mouseWorld.y, 20.0f, GOLD);
@@ -394,11 +447,9 @@ int main() {
 
         EndMode2D();
 
-        // ImGui Interface
         rlImGuiBegin();
         
-        // Main Control Panel
-        ImGui::Begin("🎮 Control Panel");
+        ImGui::Begin("Control Panel");
         
         ImGui::Text("Simulation Control");
         ImGui::Separator();
@@ -411,7 +462,7 @@ int main() {
             world.Update(1.0f / 60.0f);
         }
         ImGui::SameLine();
-        if (ImGui::Button("🔄 Reset")) {
+        if (ImGui::Button("Reset")) {
             world = World();
         }
         
@@ -432,11 +483,11 @@ int main() {
         ImGui::Checkbox("God Mode", &ui.godMode);
         ImGui::Checkbox("Agent Statistics", &ui.showAgentStats);
         ImGui::Checkbox("Neural Network", &ui.showNeuralViz);
+        ImGui::Checkbox("Phenotype Evolution", &ui.showPhenotypePanel);
         
         ImGui::End();
         
-        // Statistics Panel
-        ImGui::Begin("📈 Statistics");
+        ImGui::Begin("Statistics");
         
         ImGui::Text("Generation: %d", world.stats.generation);
         ImGui::Text("Population: %zu", world.agents.size());
@@ -449,14 +500,14 @@ int main() {
         ImGui::Separator();
         ImGui::Text("Fruits: %zu", world.fruits.size());
         ImGui::Text("Poisons: %zu", world.poisons.size());
+        ImGui::Text("Obstacles: %zu", world.obstacles.size());
         ImGui::Separator();
         ImGui::Text("FPS: %d", GetFPS());
         ImGui::Text("Simulation Time: %.1fs", world.stats.time);
         
         ImGui::End();
         
-        // Configuration Panel
-        ImGui::Begin("⚙️ Configuration");
+        ImGui::Begin("Configuration");
         
         ImGui::Text("Agent Parameters");
         ImGui::SliderFloat("Vision Radius", &Config::AGENT_VISION_RADIUS, 50.0f, 400.0f);
@@ -467,13 +518,19 @@ int main() {
         ImGui::Text("Environment");
         ImGui::SliderFloat("Fruit Energy", &Config::FRUIT_ENERGY, 20.0f, 100.0f);
         ImGui::SliderFloat("Poison Damage", &Config::POISON_DAMAGE, 20.0f, 100.0f);
+        ImGui::Checkbox("Obstacles Enabled", &Config::OBSTACLES_ENABLED);
+        
+        ImGui::Separator();
+        ImGui::Text("Learning");
+        ImGui::Checkbox("Enable Lifetime Learning", &Config::ENABLE_LIFETIME_LEARNING);
+        ImGui::SliderFloat("Learning Rate", &Config::LEARNING_RATE, 0.001f, 0.1f, "%.4f");
         
         ImGui::End();
         
-        // Conditional panels
         if (ui.godMode) DrawGodModePanel(ui, world);
         if (ui.showAgentStats) DrawAgentStatsPanel(ui, world);
         if (ui.showNeuralViz) DrawNeuralVizPanel(ui, world);
+        if (ui.showPhenotypePanel) DrawPhenotypePanel(ui, world);
         
         rlImGuiEnd();
 

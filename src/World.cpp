@@ -8,6 +8,7 @@ void SpatialGrid::Clear() {
             fruitIndices[x][y].clear();
             poisonIndices[x][y].clear();
             agentIndices[x][y].clear();
+            obstacleIndices[x][y].clear();
         }
 }
 
@@ -32,10 +33,102 @@ void SpatialGrid::AddAgent(int index, Vector2 pos) {
         agentIndices[gx][gy].push_back(index);
 }
 
+void SpatialGrid::AddObstacle(int index, Vector2 pos, Vector2 size) {
+    int gxStart = (int)pos.x / Config::GRID_CELL_SIZE;
+    int gyStart = (int)pos.y / Config::GRID_CELL_SIZE;
+    int gxEnd = (int)(pos.x + size.x) / Config::GRID_CELL_SIZE;
+    int gyEnd = (int)(pos.y + size.y) / Config::GRID_CELL_SIZE;
+    
+    for (int x = gxStart; x <= gxEnd && x < Config::GRID_W; ++x) {
+        for (int y = gyStart; y <= gyEnd && y < Config::GRID_H; ++y) {
+            if (x >= 0 && y >= 0)
+                obstacleIndices[x][y].push_back(index);
+        }
+    }
+}
+
 // --- World Implementation ---
 
 World::World() {
+    if (Config::OBSTACLES_ENABLED) {
+        GenerateRandomObstacles();
+    }
     InitPopulation();
+}
+
+void World::GenerateRandomObstacles() {
+    obstacles.clear();
+    for (int i = 0; i < Config::OBSTACLE_COUNT; ++i) {
+        Vector2 pos = {RandomFloat(100, Config::SCREEN_W - 200), 
+                      RandomFloat(100, Config::SCREEN_H - 200)};
+        Vector2 size = {RandomFloat(50, 150), RandomFloat(50, 150)};
+        obstacles.push_back({pos, size, true});
+    }
+}
+
+void World::GenerateMaze() {
+    obstacles.clear();
+    
+    int wallThickness = 20;
+    
+    for (int i = 1; i < 4; ++i) {
+        float y = Config::SCREEN_H * i / 4.0f;
+        obstacles.push_back({
+            {100, y - wallThickness/2}, 
+            {Config::SCREEN_W - 200, wallThickness}, 
+            true
+        });
+        
+        // Add gaps
+        obstacles.back().size.x *= 0.4f;
+        
+        obstacles.push_back({
+            {Config::SCREEN_W - 100 - Config::SCREEN_W * 0.4f, y - wallThickness/2}, 
+            {Config::SCREEN_W * 0.4f, wallThickness}, 
+            true
+        });
+    }
+    
+    // Vertical walls
+    for (int i = 1; i < 4; ++i) {
+        float x = Config::SCREEN_W * i / 4.0f;
+        obstacles.push_back({
+            {x - wallThickness/2, 100}, 
+            {wallThickness, Config::SCREEN_H - 200}, 
+            true
+        });
+        
+        // Add gaps
+        obstacles.back().size.y *= 0.4f;
+        
+        obstacles.push_back({
+            {x - wallThickness/2, Config::SCREEN_H - 100 - (Config::SCREEN_H - 200) * 0.4f}, 
+            {wallThickness, (Config::SCREEN_H - 200) * 0.4f}, 
+            true
+        });
+    }
+}
+
+void World::ClearObstacles() {
+    obstacles.clear();
+}
+
+bool World::CheckObstacleCollision(Vector2 pos, float radius) {
+    int gx = (int)pos.x / Config::GRID_CELL_SIZE;
+    int gy = (int)pos.y / Config::GRID_CELL_SIZE;
+    
+    for (int x = gx - 1; x <= gx + 1; ++x) {
+        for (int y = gy - 1; y <= gy + 1; ++y) {
+            if (x < 0 || x >= Config::GRID_W || y < 0 || y >= Config::GRID_H) continue;
+            
+            for (int idx : grid.obstacleIndices[x][y]) {
+                if (obstacles[idx].active && obstacles[idx].Intersects(pos, radius)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 void World::InitPopulation() {
@@ -44,13 +137,11 @@ void World::InitPopulation() {
     poisons.clear();
     
     if(!savedGenetics.empty()) {
-        // Sort savedGenetics accoring to fitnesss
         std::sort(savedGenetics.begin(), savedGenetics.end(), 
                   [](const GeneticRecord& a, const GeneticRecord& b) {
                       return a.fitness > b.fitness;
                   });
         
-        // TOP 30
         if (savedGenetics.size() > 30) {
             savedGenetics.erase(savedGenetics.begin() + 30, savedGenetics.end());
         }
@@ -63,46 +154,80 @@ void World::InitPopulation() {
         
         Vector2 startPos;
         
-        //Elite preservation
+        // Elite preservation
         for(int i = 0; i < eliteAgents && i < savedGenetics.size(); i++) {
             startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            agents.emplace_back(startPos, savedGenetics[i].brain);
+            while (CheckObstacleCollision(startPos, 10.0f)) {
+                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            }
+            agents.emplace_back(startPos, savedGenetics[i].brain, savedGenetics[i].phenotype);
         }
+        
         // Weak mutation
         for(int i = 0; i < weakMutationAgents; i++) {
             startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            while (CheckObstacleCollision(startPos, 10.0f)) {
+                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            }
             int parentIdx = rand() % savedGenetics.size();
             NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
             childBrain.Mutate(0.15f, 0.08f);
-            agents.emplace_back(startPos, childBrain);
-        }
-         //Strong mutation - for exploration
-        for(int i = 0; i < strongMutationAgents; i++) {
-            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            int parentIdx = rand() % savedGenetics.size();
-            NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
-            childBrain.Mutate(0.3f, 0.25f); 
-            agents.emplace_back(startPos, childBrain);
+            Phenotype childPheno = savedGenetics[parentIdx].phenotype;
+            childPheno.Mutate(0.1f);
+            agents.emplace_back(startPos, childBrain, childPheno);
         }
         
-        //Random Agents
+        // Strong mutation
+        for(int i = 0; i < strongMutationAgents; i++) {
+            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            while (CheckObstacleCollision(startPos, 10.0f)) {
+                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            }
+            int parentIdx = rand() % savedGenetics.size();
+            NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
+            childBrain.Mutate(0.3f, 0.25f);
+            Phenotype childPheno = savedGenetics[parentIdx].phenotype;
+            childPheno.Mutate(0.3f);
+            agents.emplace_back(startPos, childBrain, childPheno);
+        }
+        
+        // Random agents
         for(int i = 0; i < randomAgents; i++) {
             startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            agents.emplace_back(startPos); 
+            while (CheckObstacleCollision(startPos, 10.0f)) {
+                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            }
+            agents.emplace_back(startPos);
         }
         
         savedGenetics.clear();
     }
     else {
-        // First generation all random
+        // First generation
         for(int i=0; i<80; i++) {
-            agents.emplace_back(Vector2{RandomFloat(50,Config::SCREEN_W-50), 
-                                       RandomFloat(50, Config::SCREEN_H-50)});
+            Vector2 startPos = {RandomFloat(50,Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            while (CheckObstacleCollision(startPos, 10.0f)) {
+                startPos = {RandomFloat(50,Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
+            }
+            agents.emplace_back(startPos);
         }
     }
     
-    for(int i=0; i<60; i++) fruits.push_back({ {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)} });
-    for(int i=0; i<20; i++) poisons.push_back({ {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)} });
+    for(int i=0; i<60; i++) {
+        Vector2 pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
+        while (CheckObstacleCollision(pos, 5.0f)) {
+            pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
+        }
+        fruits.push_back({pos});
+    }
+    
+    for(int i=0; i<20; i++) {
+        Vector2 pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
+        while (CheckObstacleCollision(pos, 5.0f)) {
+            pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
+        }
+        poisons.push_back({pos});
+    }
     
     stats.generation++;
     stats.avgFitness = 0.0f;
@@ -127,6 +252,7 @@ SensorData World::ScanSurroundings(Agent& agent) {
     SensorData data;
     float minFruitDistSqr = Config::AGENT_VISION_RADIUS * Config::AGENT_VISION_RADIUS;
     float minPoisonDistSqr = minFruitDistSqr;
+    float minObstacleDistSqr = minFruitDistSqr;
     
     int gx = (int)agent.pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)agent.pos.y / Config::GRID_CELL_SIZE;
@@ -152,6 +278,7 @@ SensorData World::ScanSurroundings(Agent& agent) {
                     data.fruitDist = sqrt(dSqr) / Config::AGENT_VISION_RADIUS;
                 }
             }
+            
             for (int idx : grid.poisonIndices[x][y]) {
                 if (!poisons[idx].active) continue;
                 float dSqr = Vector2DistanceSqr(agent.pos, poisons[idx].pos);
@@ -162,6 +289,19 @@ SensorData World::ScanSurroundings(Agent& agent) {
                     data.poisonAngle = NormalizeAngle(angleTo - agent.angle) / PI;
                     data.poisonDist = sqrt(dSqr) / Config::AGENT_VISION_RADIUS;
                     sawPoison = true;
+                }
+            }
+            
+            for (int idx : grid.obstacleIndices[x][y]) {
+                if (!obstacles[idx].active) continue;
+                Vector2 center = {obstacles[idx].pos.x + obstacles[idx].size.x / 2,
+                                 obstacles[idx].pos.y + obstacles[idx].size.y / 2};
+                float dSqr = Vector2DistanceSqr(agent.pos, center);
+                if (dSqr < minObstacleDistSqr) {
+                    minObstacleDistSqr = dSqr;
+                    float angleTo = atan2(center.y - agent.pos.y, center.x - agent.pos.x);
+                    data.obstacleAngle = NormalizeAngle(angleTo - agent.angle) / PI;
+                    data.obstacleDist = sqrt(dSqr) / Config::AGENT_VISION_RADIUS;
                 }
             }
         }
@@ -179,8 +319,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
     int gx = (int)agent.pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)agent.pos.y / Config::GRID_CELL_SIZE;
     
-    bool ateFruit = false;
-    bool atePoison = false;
+    float reward = 0.0f;
 
     for(int x = gx-1; x <= gx+1; x++) {
         for(int y = gy-1; y <= gy+1; y++) {
@@ -191,15 +330,16 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                     agent.energy = std::min(agent.energy + Config::FRUIT_ENERGY, Config::AGENT_MAX_ENERGY);
                     fruits[idx].active = false;
                     agent.fruitsEaten++;
-                    ateFruit = true;
+                    reward += 1.0f;  // Positive reward
                 }
             }
+            
             for (int idx : grid.poisonIndices[x][y]) {
                 if (poisons[idx].active && Vector2DistanceSqr(agent.pos, poisons[idx].pos) < eatRadiusSqr) {
                     agent.energy -= Config::POISON_DAMAGE;
                     poisons[idx].active = false;
-                    atePoison = true;
                     agent.poisonsAvoided = std::max(0, agent.poisonsAvoided - 5);
+                    reward -= 2.0f;
                 }
             }
             
@@ -216,17 +356,25 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                             Agent child(agent.pos);
                             child.brain = NeuralNetwork::Crossover(agent.brain, partner.brain);
                             child.brain.Mutate(0.1f, 0.15f);
+                            child.phenotype = Phenotype::Crossover(agent.phenotype, partner.phenotype);
+                            child.phenotype.Mutate(0.1f);
                             babies.push_back(child);
                             
                             agent.childrenCount++;
                             partner.childrenCount++;
                             
+                            reward += 0.5f;
                             return;
                         }
                     }
                  }
             }
         }
+    }
+    
+    if (Config::ENABLE_LIFETIME_LEARNING && reward != 0.0f) {
+        agent.totalReward += reward;
+        agent.brain.LearnFromReward(reward, Config::LEARNING_RATE);
     }
 }
 
@@ -237,18 +385,27 @@ void World::Update(float dt) {
     for(size_t i=0; i<fruits.size(); ++i) if(fruits[i].active) grid.AddFruit(i, fruits[i].pos);
     for(size_t i=0; i<poisons.size(); ++i) if(poisons[i].active) grid.AddPoison(i, poisons[i].pos);
     for(size_t i=0; i<agents.size(); ++i) if(agents[i].active) grid.AddAgent(i, agents[i].pos);
+    for(size_t i=0; i<obstacles.size(); ++i) if(obstacles[i].active) grid.AddObstacle(i, obstacles[i].pos, obstacles[i].size);
 
     std::vector<Agent> babies;
+    
+    float totalSpeed = 0, totalSize = 0, totalEfficiency = 0;
+    int activeCount = 0;
 
     for(auto& agent : agents) {
         if (!agent.active) continue;
         
         agent.lifespan += dt;
+        activeCount++;
+        totalSpeed += agent.phenotype.speed;
+        totalSize += agent.phenotype.size;
+        totalEfficiency += agent.phenotype.efficiency;
 
         SensorData data = ScanSurroundings(agent);
         std::vector<float> inputs = {
-            data.fruitAngle, data.fruitDist, data.poisonAngle, data.poisonDist,
-            agent.energy / Config::AGENT_MAX_ENERGY
+            data.fruitAngle, data.fruitDist, 
+            data.poisonAngle, data.poisonDist,
+            data.obstacleAngle, data.obstacleDist
         };
 
         auto outputs = agent.brain.FeedForward(inputs);
@@ -256,14 +413,23 @@ void World::Update(float dt) {
         float leftTrack = outputs[0];
         float rightTrack = outputs[1];
         float rotSpeed = 3.0f;
-        float moveSpeed = 120.0f;
+        float moveSpeed = 120.0f * agent.phenotype.GetActualSpeed();
 
         agent.angle += (leftTrack - rightTrack) * rotSpeed * dt;
         Vector2 forward = { cos(agent.angle), sin(agent.angle) };
         float throttle = (leftTrack + rightTrack) / 2.0f;
         if(throttle < -0.2f) throttle = -0.2f;
 
-        agent.pos = Vector2Add(agent.pos, Vector2Scale(forward, throttle * moveSpeed * dt));
+        Vector2 newPos = Vector2Add(agent.pos, Vector2Scale(forward, throttle * moveSpeed * dt));
+        
+        if (!CheckObstacleCollision(newPos, agent.phenotype.GetVisualSize())) {
+            agent.pos = newPos;
+        } else {
+            agent.obstaclesHit++;
+            if (Config::ENABLE_LIFETIME_LEARNING) {
+                agent.brain.LearnFromReward(-0.1f, Config::LEARNING_RATE);
+            }
+        }
 
         // Wrap around screen
         if (agent.pos.x < 0) agent.pos.x = Config::SCREEN_W;
@@ -271,7 +437,9 @@ void World::Update(float dt) {
         if (agent.pos.y < 0) agent.pos.y = Config::SCREEN_H;
         if (agent.pos.y > Config::SCREEN_H) agent.pos.y = 0;
 
-        agent.energy -= Config::METABOLISM_RATE * dt;
+        float metabolismRate = Config::METABOLISM_RATE * agent.phenotype.GetMetabolicRate();
+        agent.energy -= metabolismRate * dt;
+        
         if (agent.energy <= 0) {
             agent.active = false;
             stats.deaths++;
@@ -285,14 +453,19 @@ void World::Update(float dt) {
             size_t activeAgents = 0;
             for(const auto& a : agents) if(a.active) activeAgents++;
 
-            //Save genetics if population is low and agent has decent fitness
             if (activeAgents <= Config::ACTIVE_AGENTS && fitness > 5.0f) {
-                savedGenetics.push_back({agent.brain, fitness});
+                savedGenetics.push_back({agent.brain, agent.phenotype, fitness});
             }
             continue;
         }
 
         HandleInteractions(agent, babies);
+    }
+    
+    if (activeCount > 0) {
+        stats.avgSpeed = totalSpeed / activeCount;
+        stats.avgSize = totalSize / activeCount;
+        stats.avgEfficiency = totalEfficiency / activeCount;
     }
 
     if (!babies.empty()) {
@@ -305,11 +478,20 @@ void World::Update(float dt) {
     CleanupEntities(poisons);
 
     // Dynamic spawning
-    if (fruits.size() < 40) fruits.push_back({ {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)} });
-    if (poisons.size() < 15) poisons.push_back({ {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)} });
+    if (fruits.size() < 40) {
+        Vector2 pos = {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)};
+        if (!CheckObstacleCollision(pos, 5.0f)) {
+            fruits.push_back({pos});
+        }
+    }
+    if (poisons.size() < 15) {
+        Vector2 pos = {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)};
+        if (!CheckObstacleCollision(pos, 5.0f)) {
+            poisons.push_back({pos});
+        }
+    }
 
     if (agents.empty()) {
-        // Calculate fitness before reset
         if (stats.deaths > 0) {
             stats.avgFitness = stats.totalFitness / stats.deaths;
         }
@@ -317,4 +499,14 @@ void World::Update(float dt) {
         stats.totalFitness = 0.0f;
     }
     if (agents.size() > stats.maxPop) stats.maxPop = agents.size();
+}
+
+void World::Draw() {
+    // Draw obstacles
+    for (const auto& obs : obstacles) {
+        if (obs.active) {
+            DrawRectangleV(obs.pos, obs.size, {100, 100, 100, 255});
+            DrawRectangleLinesEx({obs.pos.x, obs.pos.y, obs.size.x, obs.size.y}, 2, {150, 150, 150, 255});
+        }
+    }
 }
