@@ -127,17 +127,29 @@ void DrawGodModePanel(UIState& ui, World& world) {
     }
     
     ImGui::Separator();
-    ImGui::Text("Obstacle Controls:");
+    ImGui::Text("🏗️ Obstacle Layouts:");
     
-    if (ImGui::Button("Random Obstacles")) {
+    if (ImGui::Button("Random Mixed", ImVec2(-1, 0))) {
         world.GenerateRandomObstacles();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Generate Maze")) {
+    
+    if (ImGui::Button("Maze", ImVec2(-1, 0))) {
         world.GenerateMaze();
     }
     
-    if (ImGui::Button("Clear Obstacles")) {
+    if (ImGui::Button("Arena", ImVec2(-1, 0))) {
+        world.GenerateArena();
+    }
+    
+    if (ImGui::Button("Rooms", ImVec2(-1, 0))) {
+        world.GenerateRooms();
+    }
+    
+    if (ImGui::Button("Spiral", ImVec2(-1, 0))) {
+        world.GenerateSpiral();
+    }
+    
+    if (ImGui::Button("Clear All", ImVec2(-1, 0))) {
         world.ClearObstacles();
     }
     
@@ -148,19 +160,22 @@ void DrawGodModePanel(UIState& ui, World& world) {
     
     if (ImGui::Button("Spawn 10 Fruits")) {
         for (int i = 0; i < 10; ++i) {
-            world.fruits.push_back({{RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)}});
+            Vector2 pos = world.FindSafeSpawnPosition(5.0f);
+            world.fruits.push_back({pos});
         }
     }
     
     if (ImGui::Button("Spawn 10 Poisons")) {
         for (int i = 0; i < 10; ++i) {
-            world.poisons.push_back({{RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)}});
+            Vector2 pos = world.FindSafeSpawnPosition(5.0f);
+            world.poisons.push_back({pos});
         }
     }
     
     if (ImGui::Button("Spawn 5 Random Agents")) {
         for (int i = 0; i < 5; ++i) {
-            world.agents.emplace_back(Vector2{RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)});
+            Vector2 pos = world.FindSafeSpawnPosition();
+            world.agents.emplace_back(pos);
         }
     }
     
@@ -202,7 +217,7 @@ void DrawGodModePanel(UIState& ui, World& world) {
 }
 
 void DrawAgentStatsPanel(UIState& ui, World& world) {
-    ImGui::Begin("Agent Statistics", &ui.showAgentStats);
+    ImGui::Begin("📊 Agent Statistics", &ui.showAgentStats);
     
     if (world.agents.empty()) {
         ImGui::Text("No active agents");
@@ -281,7 +296,7 @@ void DrawAgentStatsPanel(UIState& ui, World& world) {
 }
 
 void DrawNeuralVizPanel(UIState& ui, World& world) {
-    ImGui::Begin(" Neural Network Visualization", &ui.showNeuralViz, ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Begin("Neural Network Visualization", &ui.showNeuralViz, ImGuiWindowFlags_AlwaysAutoResize);
     
     if (ui.selectedAgentIdx >= 0 && ui.selectedAgentIdx < (int)world.agents.size()) {
         Agent& agent = world.agents[ui.selectedAgentIdx];

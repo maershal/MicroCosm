@@ -56,56 +56,212 @@ World::World() {
     InitPopulation();
 }
 
+Vector2 World::FindSafeSpawnPosition(float minRadius, int maxAttempts) {
+    for (int attempt = 0; attempt < maxAttempts; ++attempt) {
+        Vector2 pos = {
+            RandomFloat(minRadius + 50, Config::SCREEN_W - minRadius - 50), 
+            RandomFloat(minRadius + 50, Config::SCREEN_H - minRadius - 50)
+        };
+        
+        if (!CheckObstacleCollision(pos, minRadius)) {
+            return pos;
+        }
+    }
+    
+    // Fallback: return center position
+    return {Config::SCREEN_W / 2.0f, Config::SCREEN_H / 2.0f};
+}
+
 void World::GenerateRandomObstacles() {
     obstacles.clear();
+    
     for (int i = 0; i < Config::OBSTACLE_COUNT; ++i) {
         Vector2 pos = {RandomFloat(100, Config::SCREEN_W - 200), 
                       RandomFloat(100, Config::SCREEN_H - 200)};
         Vector2 size = {RandomFloat(50, 150), RandomFloat(50, 150)};
-        obstacles.push_back({pos, size, true});
+        
+        // Random obstacle type
+        int typeChoice = rand() % 4;
+        ObstacleType type;
+        switch (typeChoice) {
+            case 0: type = ObstacleType::Wall; break;
+            case 1: type = ObstacleType::Circle; break;
+            case 2: type = ObstacleType::L_Shape; break;
+            case 3: type = ObstacleType::Corridor; break;
+            default: type = ObstacleType::Wall;
+        }
+        
+        obstacles.push_back(Obstacle(pos, size, type));
     }
 }
 
 void World::GenerateMaze() {
     obstacles.clear();
     
-    int wallThickness = 20;
+    int wallThickness = 15;
+    int gridSize = 4;
+    float cellWidth = (Config::SCREEN_W - 200) / gridSize;
+    float cellHeight = (Config::SCREEN_H - 200) / gridSize;
     
-    for (int i = 1; i < 4; ++i) {
-        float y = Config::SCREEN_H * i / 4.0f;
-        obstacles.push_back({
-            {100, y - wallThickness/2}, 
-            {Config::SCREEN_W - 200, wallThickness}, 
-            true
-        });
+    // Create grid walls with strategic gaps
+    for (int i = 0; i <= gridSize; ++i) {
+        // Horizontal walls
+        if (i < gridSize) {
+            float y = 100 + i * cellHeight;
+            for (int j = 0; j < gridSize; ++j) {
+                if (rand() % 100 < 60) { // 60% chance of wall segment
+                    float x = 100 + j * cellWidth;
+                    obstacles.push_back(Obstacle(
+                        {x, y}, 
+                        {cellWidth * 0.8f, wallThickness}, 
+                        ObstacleType::Wall
+                    ));
+                }
+            }
+        }
         
-        // Add gaps
-        obstacles.back().size.x *= 0.4f;
-        
-        obstacles.push_back({
-            {Config::SCREEN_W - 100 - Config::SCREEN_W * 0.4f, y - wallThickness/2}, 
-            {Config::SCREEN_W * 0.4f, wallThickness}, 
-            true
-        });
+        // Vertical walls
+        if (i < gridSize) {
+            float x = 100 + i * cellWidth;
+            for (int j = 0; j < gridSize; ++j) {
+                if (rand() % 100 < 60) { // 60% chance of wall segment
+                    float y = 100 + j * cellHeight;
+                    obstacles.push_back(Obstacle(
+                        {x, y}, 
+                        {wallThickness, cellHeight * 0.8f}, 
+                        ObstacleType::Wall
+                    ));
+                }
+            }
+        }
     }
     
-    // Vertical walls
-    for (int i = 1; i < 4; ++i) {
-        float x = Config::SCREEN_W * i / 4.0f;
-        obstacles.push_back({
-            {x - wallThickness/2, 100}, 
-            {wallThickness, Config::SCREEN_H - 200}, 
-            true
-        });
+    // Add some circular obstacles at intersections
+    for (int i = 1; i < gridSize; ++i) {
+        for (int j = 1; j < gridSize; ++j) {
+            if (rand() % 100 < 30) {
+                float x = 100 + i * cellWidth - 20;
+                float y = 100 + j * cellHeight - 20;
+                obstacles.push_back(Obstacle({x, y}, {40, 40}, ObstacleType::Circle));
+            }
+        }
+    }
+}
+
+void World::GenerateArena() {
+    obstacles.clear();
+    
+    int wallThickness = 20;
+    
+    // Outer border walls
+    obstacles.push_back(Obstacle({50, 50}, {Config::SCREEN_W - 100, wallThickness}, ObstacleType::Wall));
+    obstacles.push_back(Obstacle({50, Config::SCREEN_H - 70}, {Config::SCREEN_W - 100, wallThickness}, ObstacleType::Wall));
+    obstacles.push_back(Obstacle({50, 50}, {wallThickness, Config::SCREEN_H - 100}, ObstacleType::Wall));
+    obstacles.push_back(Obstacle({Config::SCREEN_W - 70, 50}, {wallThickness, Config::SCREEN_H - 100}, ObstacleType::Wall));
+    
+    // Central structure - mix of shapes
+    float centerX = Config::SCREEN_W / 2.0f;
+    float centerY = Config::SCREEN_H / 2.0f;
+    
+    // Large central circle
+    obstacles.push_back(Obstacle({centerX - 60, centerY - 60}, {120, 120}, ObstacleType::Circle));
+    
+    // Four L-shapes in corners creating chambers
+    obstacles.push_back(Obstacle({150, 150}, {100, 100}, ObstacleType::L_Shape));
+    obstacles.push_back(Obstacle({Config::SCREEN_W - 250, 150}, {100, 100}, ObstacleType::L_Shape));
+    obstacles.push_back(Obstacle({150, Config::SCREEN_H - 250}, {100, 100}, ObstacleType::L_Shape));
+    obstacles.push_back(Obstacle({Config::SCREEN_W - 250, Config::SCREEN_H - 250}, {100, 100}, ObstacleType::L_Shape));
+    
+    // Corridors connecting areas
+    obstacles.push_back(Obstacle({centerX - 150, centerY - 10}, {120, 20}, ObstacleType::Corridor));
+    obstacles.push_back(Obstacle({centerX + 30, centerY - 10}, {120, 20}, ObstacleType::Corridor));
+    obstacles.push_back(Obstacle({centerX - 10, centerY - 150}, {20, 120}, ObstacleType::Corridor));
+    obstacles.push_back(Obstacle({centerX - 10, centerY + 30}, {20, 120}, ObstacleType::Corridor));
+}
+
+void World::GenerateRooms() {
+    obstacles.clear();
+    
+    int wallThickness = 15;
+    
+    // Create a layout with distinct rooms
+    float midX = Config::SCREEN_W / 2.0f;
+    float midY = Config::SCREEN_H / 2.0f;
+    
+    // Horizontal divider with gaps (doorways)
+    obstacles.push_back(Obstacle({100, midY - wallThickness/2}, {midX - 150, wallThickness}, ObstacleType::Wall));
+    obstacles.push_back(Obstacle({midX + 50, midY - wallThickness/2}, {Config::SCREEN_W - midX - 150, wallThickness}, ObstacleType::Wall));
+    
+    // Vertical divider with gaps
+    obstacles.push_back(Obstacle({midX - wallThickness/2, 100}, {wallThickness, midY - 150}, ObstacleType::Wall));
+    obstacles.push_back(Obstacle({midX - wallThickness/2, midY + 50}, {wallThickness, Config::SCREEN_H - midY - 150}, ObstacleType::Wall));
+    
+    // Add furniture/obstacles in each room
+    int roomCount = 4;
+    float roomPositions[4][2] = {
+        {Config::SCREEN_W * 0.25f, Config::SCREEN_H * 0.25f},
+        {Config::SCREEN_W * 0.75f, Config::SCREEN_H * 0.25f},
+        {Config::SCREEN_W * 0.25f, Config::SCREEN_H * 0.75f},
+        {Config::SCREEN_W * 0.75f, Config::SCREEN_H * 0.75f}
+    };
+    
+    for (int i = 0; i < roomCount; ++i) {
+        float x = roomPositions[i][0];
+        float y = roomPositions[i][1];
         
-        // Add gaps
-        obstacles.back().size.y *= 0.4f;
+        // Add 1-3 obstacles per room
+        int obstacleCount = 1 + rand() % 3;
+        for (int j = 0; j < obstacleCount; ++j) {
+            float offsetX = RandomFloat(-80, 80);
+            float offsetY = RandomFloat(-80, 80);
+            Vector2 obsPos = {x + offsetX, y + offsetY};
+            Vector2 obsSize = {RandomFloat(30, 70), RandomFloat(30, 70)};
+            
+            ObstacleType type = (rand() % 2 == 0) ? ObstacleType::Circle : ObstacleType::Wall;
+            obstacles.push_back(Obstacle(obsPos, obsSize, type));
+        }
+    }
+}
+
+void World::GenerateSpiral() {
+    obstacles.clear();
+    
+    int wallThickness = 15;
+    float centerX = Config::SCREEN_W / 2.0f;
+    float centerY = Config::SCREEN_H / 2.0f;
+    
+    // Create a spiral pattern
+    int segments = 20;
+    float angleStep = 360.0f / segments;
+    float radiusStep = 15.0f;
+    
+    for (int i = 0; i < segments; ++i) {
+        float angle = (i * angleStep) * DEG2RAD;
+        float radius = 50 + i * radiusStep;
         
-        obstacles.push_back({
-            {x - wallThickness/2, Config::SCREEN_H - 100 - (Config::SCREEN_H - 200) * 0.4f}, 
-            {wallThickness, (Config::SCREEN_H - 200) * 0.4f}, 
-            true
-        });
+        float x = centerX + cos(angle) * radius;
+        float y = centerY + sin(angle) * radius;
+        
+        float nextAngle = ((i + 1) * angleStep) * DEG2RAD;
+        float nextRadius = 50 + (i + 1) * radiusStep;
+        float nextX = centerX + cos(nextAngle) * nextRadius;
+        float nextY = centerY + sin(nextAngle) * nextRadius;
+        
+        // Calculate wall orientation
+        float dx = nextX - x;
+        float dy = nextY - y;
+        float length = sqrt(dx * dx + dy * dy);
+        
+        obstacles.push_back(Obstacle({x - wallThickness/2, y - wallThickness/2}, {length, wallThickness}, ObstacleType::Wall));
+    }
+    
+    // Add some circular obstacles for variety
+    for (int i = 0; i < 8; ++i) {
+        float angle = (i * 45) * DEG2RAD;
+        float radius = 150 + RandomFloat(-30, 30);
+        float x = centerX + cos(angle) * radius - 20;
+        float y = centerY + sin(angle) * radius - 20;
+        obstacles.push_back(Obstacle({x, y}, {40, 40}, ObstacleType::Circle));
     }
 }
 
@@ -152,23 +308,15 @@ void World::InitPopulation() {
         int weakMutationAgents = totalAgents / 2 - randomAgents;
         int strongMutationAgents = totalAgents - randomAgents - eliteAgents - weakMutationAgents;
         
-        Vector2 startPos;
-        
         // Elite preservation
         for(int i = 0; i < eliteAgents && i < savedGenetics.size(); i++) {
-            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            while (CheckObstacleCollision(startPos, 10.0f)) {
-                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            }
+            Vector2 startPos = FindSafeSpawnPosition();
             agents.emplace_back(startPos, savedGenetics[i].brain, savedGenetics[i].phenotype);
         }
         
         // Weak mutation
         for(int i = 0; i < weakMutationAgents; i++) {
-            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            while (CheckObstacleCollision(startPos, 10.0f)) {
-                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            }
+            Vector2 startPos = FindSafeSpawnPosition();
             int parentIdx = rand() % savedGenetics.size();
             NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
             childBrain.Mutate(0.15f, 0.08f);
@@ -179,10 +327,7 @@ void World::InitPopulation() {
         
         // Strong mutation
         for(int i = 0; i < strongMutationAgents; i++) {
-            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            while (CheckObstacleCollision(startPos, 10.0f)) {
-                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            }
+            Vector2 startPos = FindSafeSpawnPosition();
             int parentIdx = rand() % savedGenetics.size();
             NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
             childBrain.Mutate(0.3f, 0.25f);
@@ -193,10 +338,7 @@ void World::InitPopulation() {
         
         // Random agents
         for(int i = 0; i < randomAgents; i++) {
-            startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            while (CheckObstacleCollision(startPos, 10.0f)) {
-                startPos = {RandomFloat(50, Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            }
+            Vector2 startPos = FindSafeSpawnPosition();
             agents.emplace_back(startPos);
         }
         
@@ -205,27 +347,20 @@ void World::InitPopulation() {
     else {
         // First generation
         for(int i=0; i<80; i++) {
-            Vector2 startPos = {RandomFloat(50,Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            while (CheckObstacleCollision(startPos, 10.0f)) {
-                startPos = {RandomFloat(50,Config::SCREEN_W-50), RandomFloat(50, Config::SCREEN_H-50)};
-            }
+            Vector2 startPos = FindSafeSpawnPosition();
             agents.emplace_back(startPos);
         }
     }
     
+    // Spawn fruits in safe locations
     for(int i=0; i<60; i++) {
-        Vector2 pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
-        while (CheckObstacleCollision(pos, 5.0f)) {
-            pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
-        }
+        Vector2 pos = FindSafeSpawnPosition(5.0f);
         fruits.push_back({pos});
     }
     
+    // Spawn poisons in safe locations
     for(int i=0; i<20; i++) {
-        Vector2 pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
-        while (CheckObstacleCollision(pos, 5.0f)) {
-            pos = {RandomFloat(20, Config::SCREEN_W-20), RandomFloat(20, Config::SCREEN_H-20)};
-        }
+        Vector2 pos = FindSafeSpawnPosition(5.0f);
         poisons.push_back({pos});
     }
     
@@ -292,6 +427,7 @@ SensorData World::ScanSurroundings(Agent& agent) {
                 }
             }
             
+            // NEW: Obstacle sensing
             for (int idx : grid.obstacleIndices[x][y]) {
                 if (!obstacles[idx].active) continue;
                 Vector2 center = {obstacles[idx].pos.x + obstacles[idx].size.x / 2,
@@ -339,7 +475,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                     agent.energy -= Config::POISON_DAMAGE;
                     poisons[idx].active = false;
                     agent.poisonsAvoided = std::max(0, agent.poisonsAvoided - 5);
-                    reward -= 2.0f;
+                    reward -= 2.0f;  // Negative reward
                 }
             }
             
@@ -363,7 +499,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                             agent.childrenCount++;
                             partner.childrenCount++;
                             
-                            reward += 0.5f;
+                            reward += 0.5f;  // Small reward for reproduction
                             return;
                         }
                     }
@@ -389,6 +525,7 @@ void World::Update(float dt) {
 
     std::vector<Agent> babies;
     
+    // Track phenotype averages
     float totalSpeed = 0, totalSize = 0, totalEfficiency = 0;
     int activeCount = 0;
 
@@ -426,6 +563,7 @@ void World::Update(float dt) {
             agent.pos = newPos;
         } else {
             agent.obstaclesHit++;
+            // Small penalty for hitting obstacles
             if (Config::ENABLE_LIFETIME_LEARNING) {
                 agent.brain.LearnFromReward(-0.1f, Config::LEARNING_RATE);
             }
@@ -477,18 +615,14 @@ void World::Update(float dt) {
     CleanupEntities(fruits);
     CleanupEntities(poisons);
 
-    // Dynamic spawning
+    // Dynamic spawning with safe positions
     if (fruits.size() < 40) {
-        Vector2 pos = {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)};
-        if (!CheckObstacleCollision(pos, 5.0f)) {
-            fruits.push_back({pos});
-        }
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 20);
+        fruits.push_back({pos});
     }
     if (poisons.size() < 15) {
-        Vector2 pos = {RandomFloat(0, Config::SCREEN_W), RandomFloat(0, Config::SCREEN_H)};
-        if (!CheckObstacleCollision(pos, 5.0f)) {
-            poisons.push_back({pos});
-        }
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 20);
+        poisons.push_back({pos});
     }
 
     if (agents.empty()) {

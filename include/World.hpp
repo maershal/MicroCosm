@@ -63,7 +63,12 @@ public:
     
     void GenerateRandomObstacles();
     void GenerateMaze();
+    void GenerateArena();
+    void GenerateRooms();
+    void GenerateSpiral();
     void ClearObstacles();
+    
+    Vector2 FindSafeSpawnPosition(float minRadius = 10.0f, int maxAttempts = 50);
 
 private:
     void InitPopulation();
