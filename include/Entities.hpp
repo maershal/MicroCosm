@@ -14,7 +14,7 @@ struct Poison {
     bool active = true; 
 };
 
-// NEW: Obstacle types for variety
+// Obstacle types for variety
 enum class ObstacleType { 
     Wall,      // Solid rectangular wall
     Circle,    // Circular obstacle
@@ -22,12 +22,12 @@ enum class ObstacleType {
     Corridor   // Narrow passage
 };
 
-// NEW: Enhanced Obstacle structure
+// Enhanced Obstacle structure
 struct Obstacle {
     Vector2 pos;
     Vector2 size;
     ObstacleType type;
-    float rotation = 0.0f;  // For rotated obstacles
+    float rotation = 0.0f;
     bool active = true;
     Color color = {80, 80, 80, 255};
     
@@ -155,7 +155,6 @@ struct Phenotype {
     
     Phenotype(float s, float sz, float e) : speed(s), size(sz), efficiency(e) {}
     
-    // Trade-offs: fast agents consume more energy, large agents are slower
     float GetActualSpeed() const {
         return speed * (2.0f - size * Config::SIZE_SPEED_MULTIPLIER);
     }
@@ -208,7 +207,6 @@ struct Agent {
     std::vector<float> lastInputs;
     std::vector<float> lastOutputs;
     
-    // Debug info
     Vector2 targetFruit = {-1, -1};
     Vector2 targetPoison = {-1, -1};
     
@@ -225,11 +223,21 @@ struct Agent {
           brain(net), phenotype(pheno) {}
     
     float CalculateFitness() const {
-        return lifespan * 0.3f +
-               childrenCount * 15.0f +
-               fruitsEaten * 2.0f +
-               poisonsAvoided * 0.5f +
-               totalReward * 0.1f -
-               obstaclesHit * 0.2f;
+        float baseFitness = lifespan * 0.3f +
+                           childrenCount * 15.0f +
+                           fruitsEaten * 2.0f +
+                           poisonsAvoided * 0.5f +
+                           totalReward * 0.1f;
+        
+        float obstaclePenalty = obstaclesHit * 1.0f;
+        
+        if (lifespan > 0) {
+            float hitRate = obstaclesHit / lifespan;
+            if (hitRate > 0.5f) {
+                obstaclePenalty += (hitRate - 0.5f) * 10.0f;
+            }
+        }
+        
+        return std::max(0.0f, baseFitness - obstaclePenalty);
     }
 };

@@ -39,10 +39,9 @@ void SpatialGrid::AddObstacle(int index, Vector2 pos, Vector2 size) {
     int gxEnd = (int)(pos.x + size.x) / Config::GRID_CELL_SIZE;
     int gyEnd = (int)(pos.y + size.y) / Config::GRID_CELL_SIZE;
     
-    for (int x = gxStart; x <= gxEnd && x < Config::GRID_W; ++x) {
-        for (int y = gyStart; y <= gyEnd && y < Config::GRID_H; ++y) {
-            if (x >= 0 && y >= 0)
-                obstacleIndices[x][y].push_back(index);
+    for (int x = std::max(0, gxStart); x <= std::min(Config::GRID_W - 1, gxEnd); ++x) {
+        for (int y = std::max(0, gyStart); y <= std::min(Config::GRID_H - 1, gyEnd); ++y) {
+            obstacleIndices[x][y].push_back(index);
         }
     }
 }
@@ -63,12 +62,24 @@ Vector2 World::FindSafeSpawnPosition(float minRadius, int maxAttempts) {
             RandomFloat(minRadius + 50, Config::SCREEN_H - minRadius - 50)
         };
         
+        // Check if position collides with any obstacle
         if (!CheckObstacleCollision(pos, minRadius)) {
             return pos;
         }
     }
     
-    // Fallback: return center position
+    // Fallback: try center area
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        Vector2 pos = {
+            Config::SCREEN_W / 2.0f + RandomFloat(-100, 100),
+            Config::SCREEN_H / 2.0f + RandomFloat(-100, 100)
+        };
+        if (!CheckObstacleCollision(pos, minRadius)) {
+            return pos;
+        }
+    }
+    
+    // Last resort: return center
     return {Config::SCREEN_W / 2.0f, Config::SCREEN_H / 2.0f};
 }
 
@@ -76,9 +87,9 @@ void World::GenerateRandomObstacles() {
     obstacles.clear();
     
     for (int i = 0; i < Config::OBSTACLE_COUNT; ++i) {
-        Vector2 pos = {RandomFloat(100, Config::SCREEN_W - 200), 
-                      RandomFloat(100, Config::SCREEN_H - 200)};
-        Vector2 size = {RandomFloat(50, 150), RandomFloat(50, 150)};
+        Vector2 pos = {RandomFloat(100, Config::SCREEN_W - 300), 
+                      RandomFloat(100, Config::SCREEN_H - 300)};
+        Vector2 size = {RandomFloat(60, 120), RandomFloat(60, 120)};
         
         // Random obstacle type
         int typeChoice = rand() % 4;
@@ -270,18 +281,10 @@ void World::ClearObstacles() {
 }
 
 bool World::CheckObstacleCollision(Vector2 pos, float radius) {
-    int gx = (int)pos.x / Config::GRID_CELL_SIZE;
-    int gy = (int)pos.y / Config::GRID_CELL_SIZE;
-    
-    for (int x = gx - 1; x <= gx + 1; ++x) {
-        for (int y = gy - 1; y <= gy + 1; ++y) {
-            if (x < 0 || x >= Config::GRID_W || y < 0 || y >= Config::GRID_H) continue;
-            
-            for (int idx : grid.obstacleIndices[x][y]) {
-                if (obstacles[idx].active && obstacles[idx].Intersects(pos, radius)) {
-                    return true;
-                }
-            }
+    // Check all obstacles using proper collision detection
+    for (const auto& obs : obstacles) {
+        if (obs.active && obs.Intersects(pos, radius)) {
+            return true;
         }
     }
     return false;
@@ -308,15 +311,15 @@ void World::InitPopulation() {
         int weakMutationAgents = totalAgents / 2 - randomAgents;
         int strongMutationAgents = totalAgents - randomAgents - eliteAgents - weakMutationAgents;
         
-        // Elite preservation
+        // Elite preservation - use safe spawn
         for(int i = 0; i < eliteAgents && i < savedGenetics.size(); i++) {
-            Vector2 startPos = FindSafeSpawnPosition();
+            Vector2 startPos = FindSafeSpawnPosition(15.0f);
             agents.emplace_back(startPos, savedGenetics[i].brain, savedGenetics[i].phenotype);
         }
         
-        // Weak mutation
+        // Weak mutation - use safe spawn
         for(int i = 0; i < weakMutationAgents; i++) {
-            Vector2 startPos = FindSafeSpawnPosition();
+            Vector2 startPos = FindSafeSpawnPosition(15.0f);
             int parentIdx = rand() % savedGenetics.size();
             NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
             childBrain.Mutate(0.15f, 0.08f);
@@ -325,9 +328,9 @@ void World::InitPopulation() {
             agents.emplace_back(startPos, childBrain, childPheno);
         }
         
-        // Strong mutation
+        // Strong mutation - use safe spawn
         for(int i = 0; i < strongMutationAgents; i++) {
-            Vector2 startPos = FindSafeSpawnPosition();
+            Vector2 startPos = FindSafeSpawnPosition(15.0f);
             int parentIdx = rand() % savedGenetics.size();
             NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
             childBrain.Mutate(0.3f, 0.25f);
@@ -336,31 +339,31 @@ void World::InitPopulation() {
             agents.emplace_back(startPos, childBrain, childPheno);
         }
         
-        // Random agents
+        // Random agents - use safe spawn
         for(int i = 0; i < randomAgents; i++) {
-            Vector2 startPos = FindSafeSpawnPosition();
+            Vector2 startPos = FindSafeSpawnPosition(15.0f);
             agents.emplace_back(startPos);
         }
         
         savedGenetics.clear();
     }
     else {
-        // First generation
+        // First generation - ALSO use safe spawn positions
         for(int i=0; i<80; i++) {
-            Vector2 startPos = FindSafeSpawnPosition();
+            Vector2 startPos = FindSafeSpawnPosition(15.0f);
             agents.emplace_back(startPos);
         }
     }
     
     // Spawn fruits in safe locations
     for(int i=0; i<60; i++) {
-        Vector2 pos = FindSafeSpawnPosition(5.0f);
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         fruits.push_back({pos});
     }
     
     // Spawn poisons in safe locations
     for(int i=0; i<20; i++) {
-        Vector2 pos = FindSafeSpawnPosition(5.0f);
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         poisons.push_back({pos});
     }
     
@@ -426,20 +429,22 @@ SensorData World::ScanSurroundings(Agent& agent) {
                     sawPoison = true;
                 }
             }
-            
-            // NEW: Obstacle sensing
-            for (int idx : grid.obstacleIndices[x][y]) {
-                if (!obstacles[idx].active) continue;
-                Vector2 center = {obstacles[idx].pos.x + obstacles[idx].size.x / 2,
-                                 obstacles[idx].pos.y + obstacles[idx].size.y / 2};
-                float dSqr = Vector2DistanceSqr(agent.pos, center);
-                if (dSqr < minObstacleDistSqr) {
-                    minObstacleDistSqr = dSqr;
-                    float angleTo = atan2(center.y - agent.pos.y, center.x - agent.pos.x);
-                    data.obstacleAngle = NormalizeAngle(angleTo - agent.angle) / PI;
-                    data.obstacleDist = sqrt(dSqr) / Config::AGENT_VISION_RADIUS;
-                }
-            }
+        }
+    }
+    
+    // Improved obstacle detection - check all obstacles
+    float visionRadiusSqr = Config::AGENT_VISION_RADIUS * Config::AGENT_VISION_RADIUS;
+    for (const auto& obs : obstacles) {
+        if (!obs.active) continue;
+        
+        Vector2 center = {obs.pos.x + obs.size.x / 2, obs.pos.y + obs.size.y / 2};
+        float dSqr = Vector2DistanceSqr(agent.pos, center);
+        
+        if (dSqr < visionRadiusSqr && dSqr < minObstacleDistSqr) {
+            minObstacleDistSqr = dSqr;
+            float angleTo = atan2(center.y - agent.pos.y, center.x - agent.pos.x);
+            data.obstacleAngle = NormalizeAngle(angleTo - agent.angle) / PI;
+            data.obstacleDist = sqrt(dSqr) / Config::AGENT_VISION_RADIUS;
         }
     }
     
@@ -466,7 +471,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                     agent.energy = std::min(agent.energy + Config::FRUIT_ENERGY, Config::AGENT_MAX_ENERGY);
                     fruits[idx].active = false;
                     agent.fruitsEaten++;
-                    reward += 1.0f;  // Positive reward
+                    reward += 1.0f;
                 }
             }
             
@@ -475,7 +480,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                     agent.energy -= Config::POISON_DAMAGE;
                     poisons[idx].active = false;
                     agent.poisonsAvoided = std::max(0, agent.poisonsAvoided - 5);
-                    reward -= 2.0f;  // Negative reward
+                    reward -= 2.0f;
                 }
             }
             
@@ -489,7 +494,24 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                             agent.energy -= 60.0f;
                             partner.energy -= 60.0f;
                             
-                            Agent child(agent.pos);
+                            // Spawn child at safe location near parents
+                            Vector2 childBasePos = Vector2Add(agent.pos, partner.pos);
+                            childBasePos = Vector2Scale(childBasePos, 0.5f);
+                            
+                            Vector2 childPos = childBasePos;
+                            // Try to find safe position near parents
+                            for (int attempt = 0; attempt < 10; ++attempt) {
+                                Vector2 testPos = {
+                                    childBasePos.x + RandomFloat(-30, 30),
+                                    childBasePos.y + RandomFloat(-30, 30)
+                                };
+                                if (!CheckObstacleCollision(testPos, 10.0f)) {
+                                    childPos = testPos;
+                                    break;
+                                }
+                            }
+                            
+                            Agent child(childPos);
                             child.brain = NeuralNetwork::Crossover(agent.brain, partner.brain);
                             child.brain.Mutate(0.1f, 0.15f);
                             child.phenotype = Phenotype::Crossover(agent.phenotype, partner.phenotype);
@@ -499,7 +521,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                             agent.childrenCount++;
                             partner.childrenCount++;
                             
-                            reward += 0.5f;  // Small reward for reproduction
+                            reward += 0.5f;
                             return;
                         }
                     }
@@ -559,21 +581,62 @@ void World::Update(float dt) {
 
         Vector2 newPos = Vector2Add(agent.pos, Vector2Scale(forward, throttle * moveSpeed * dt));
         
-        if (!CheckObstacleCollision(newPos, agent.phenotype.GetVisualSize())) {
+        // Check collision before moving
+        float agentRadius = agent.phenotype.GetVisualSize();
+        if (!CheckObstacleCollision(newPos, agentRadius)) {
             agent.pos = newPos;
         } else {
+            // Collision detected - apply significant penalty
             agent.obstaclesHit++;
-            // Small penalty for hitting obstacles
+            agent.energy -= 5.0f; // Energy penalty for hitting walls
+            
             if (Config::ENABLE_LIFETIME_LEARNING) {
-                agent.brain.LearnFromReward(-0.1f, Config::LEARNING_RATE);
+                agent.brain.LearnFromReward(-1.0f, Config::LEARNING_RATE * 1.5f);
             }
+            
+            // Try sliding along the wall instead of stopping
+            Vector2 slideDir = {-forward.y, forward.x};
+            Vector2 slidePos1 = Vector2Add(agent.pos, Vector2Scale(slideDir, throttle * moveSpeed * dt * 0.5f));
+            Vector2 slidePos2 = Vector2Add(agent.pos, Vector2Scale(slideDir, -throttle * moveSpeed * dt * 0.5f));
+            
+            if (!CheckObstacleCollision(slidePos1, agentRadius)) {
+                agent.pos = slidePos1;
+            } else if (!CheckObstacleCollision(slidePos2, agentRadius)) {
+                agent.pos = slidePos2;
+            }
+            // else stay in place
         }
 
-        // Wrap around screen
-        if (agent.pos.x < 0) agent.pos.x = Config::SCREEN_W;
-        if (agent.pos.x > Config::SCREEN_W) agent.pos.x = 0;
-        if (agent.pos.y < 0) agent.pos.y = Config::SCREEN_H;
-        if (agent.pos.y > Config::SCREEN_H) agent.pos.y = 0;
+        Vector2 wrappedPos = agent.pos;
+        bool needsWrap = false;
+        
+        if (agent.pos.x < 0) {
+            wrappedPos.x = Config::SCREEN_W;
+            needsWrap = true;
+        }
+        if (agent.pos.x > Config::SCREEN_W) {
+            wrappedPos.x = 0;
+            needsWrap = true;
+        }
+        if (agent.pos.y < 0) {
+            wrappedPos.y = Config::SCREEN_H;
+            needsWrap = true;
+        }
+        if (agent.pos.y > Config::SCREEN_H) {
+            wrappedPos.y = 0;
+            needsWrap = true;
+        }
+        
+        // Only wrap if the wrapped position is safe
+        if (needsWrap) {
+            if (!CheckObstacleCollision(wrappedPos, agentRadius)) {
+                agent.pos = wrappedPos;
+            } else {
+                // Can't wrap, push back into bounds
+                agent.pos.x = std::clamp(agent.pos.x, agentRadius, Config::SCREEN_W - agentRadius);
+                agent.pos.y = std::clamp(agent.pos.y, agentRadius, Config::SCREEN_H - agentRadius);
+            }
+        }
 
         float metabolismRate = Config::METABOLISM_RATE * agent.phenotype.GetMetabolicRate();
         agent.energy -= metabolismRate * dt;
@@ -615,13 +678,12 @@ void World::Update(float dt) {
     CleanupEntities(fruits);
     CleanupEntities(poisons);
 
-    // Dynamic spawning with safe positions
     if (fruits.size() < 40) {
-        Vector2 pos = FindSafeSpawnPosition(5.0f, 20);
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         fruits.push_back({pos});
     }
     if (poisons.size() < 15) {
-        Vector2 pos = FindSafeSpawnPosition(5.0f, 20);
+        Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         poisons.push_back({pos});
     }
 
@@ -636,11 +698,9 @@ void World::Update(float dt) {
 }
 
 void World::Draw() {
-    // Draw obstacles
     for (const auto& obs : obstacles) {
         if (obs.active) {
-            DrawRectangleV(obs.pos, obs.size, {100, 100, 100, 255});
-            DrawRectangleLinesEx({obs.pos.x, obs.pos.y, obs.size.x, obs.size.y}, 2, {150, 150, 150, 255});
+            obs.Draw();
         }
     }
 }

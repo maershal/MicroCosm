@@ -26,11 +26,15 @@ namespace Config {
     inline float SPEED_ENERGY_MULTIPLIER = 1.5f;
     inline float SIZE_SPEED_MULTIPLIER = 0.8f;
 
-    inline float LEARNING_RATE = 0.01f;
+
+    inline float LEARNING_RATE = 0.02f;
     inline bool ENABLE_LIFETIME_LEARNING = true;
 
     inline bool OBSTACLES_ENABLED = true;
     inline int OBSTACLE_COUNT = 5;
+    
+    inline float COLLISION_ENERGY_PENALTY = 5.0f;
+    inline float COLLISION_LEARNING_BOOST = 1.5f;
 
 }
 
