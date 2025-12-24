@@ -1,6 +1,8 @@
 #pragma once
 #include "Config.hpp"
 #include "NeuralNetwork.hpp"
+#include <memory>
+#include <utility>
 
 enum class Sex { Male, Female };
 
@@ -193,7 +195,7 @@ struct Agent {
     float angle;
     float energy;
     Sex sex;
-    NeuralNetwork brain;
+    std::unique_ptr<IBrain> brain;
     Phenotype phenotype;
     bool active = true;
 
@@ -210,17 +212,64 @@ struct Agent {
     Vector2 targetFruit = {-1, -1};
     Vector2 targetPoison = {-1, -1};
     
-    Agent() : pos({0,0}), angle(0), energy(0), sex(Sex::Male), brain(6, 8, 2) {}
+    Agent() : pos({0,0}), angle(0), energy(0), sex(Sex::Male) {
+        brain = std::make_unique<NeuralNetwork>(6, 8, 2);
+    }
     
     Agent(Vector2 p) : pos(p), angle(RandomFloat(0, 2*PI)), energy(Config::AGENT_START_ENERGY), 
-                       sex(RandomFloat(0,1) > 0.5f ? Sex::Male : Sex::Female),
-                       brain(6, 8, 2) {}
+                       sex(RandomFloat(0,1) > 0.5f ? Sex::Male : Sex::Female) {
+        brain = std::make_unique<NeuralNetwork>(6, 8, 2);
+    }
     
-    Agent(Vector2 p, const NeuralNetwork& net, const Phenotype& pheno) 
+    Agent(Vector2 p, const IBrain& net, const Phenotype& pheno) 
         : pos(p), angle(RandomFloat(0, 2*PI)), 
           energy(Config::AGENT_START_ENERGY),
           sex(RandomFloat(0,1) > 0.5f ? Sex::Male : Sex::Female),
-          brain(net), phenotype(pheno) {}
+          phenotype(pheno) {
+          brain = net.Clone();
+    }
+
+    // Deep Copy Constructor
+    Agent(const Agent& other) 
+        : pos(other.pos), angle(other.angle), energy(other.energy), 
+          sex(other.sex), phenotype(other.phenotype), active(other.active),
+          lifespan(other.lifespan), childrenCount(other.childrenCount),
+          fruitsEaten(other.fruitsEaten), poisonsAvoided(other.poisonsAvoided),
+          obstaclesHit(other.obstaclesHit), totalReward(other.totalReward),
+          lastInputs(other.lastInputs), lastOutputs(other.lastOutputs),
+          targetFruit(other.targetFruit), targetPoison(other.targetPoison)
+    {
+        if (other.brain) brain = other.brain->Clone();
+    }
+    
+    // Deep Copy Assignment
+    Agent& operator=(const Agent& other) {
+        if (this != &other) {
+             pos = other.pos;
+             angle = other.angle;
+             energy = other.energy;
+             sex = other.sex;
+             phenotype = other.phenotype;
+             active = other.active;
+             lifespan = other.lifespan;
+             childrenCount = other.childrenCount;
+             fruitsEaten = other.fruitsEaten;
+             poisonsAvoided = other.poisonsAvoided;
+             obstaclesHit = other.obstaclesHit;
+             totalReward = other.totalReward;
+             lastInputs = other.lastInputs;
+             lastOutputs = other.lastOutputs;
+             targetFruit = other.targetFruit;
+             targetPoison = other.targetPoison;
+             
+             if (other.brain) brain = other.brain->Clone();
+             else brain.reset();
+        }
+        return *this;
+    }
+
+    Agent(Agent&&) = default;
+    Agent& operator=(Agent&&) = default;
     
     float CalculateFitness() const {
         float baseFitness = lifespan * 0.3f +

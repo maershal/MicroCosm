@@ -1,6 +1,8 @@
 #include "raylib.h"
 #include "World.hpp"
 #include "Config.hpp"
+#include "Brain.hpp"
+#include "RNNBrain.hpp"
 #include "rlImGui.h"
 #include "imgui.h"
 #include <algorithm>
@@ -14,65 +16,14 @@ struct UIState {
     bool showPhenotypePanel = false;
     int selectedAgentIdx = -1;
     
-    enum class SpawnTool { None, Fruit, Poison, Agent, Erase };
+    enum class SpawnTool { None, Fruit, Poison, Agent, AgentRNN, Erase };
     SpawnTool currentTool = SpawnTool::None;
     
     Camera2D camera = {0};
     bool freeCam = false;
 };
 
-void DrawNeuralNetwork(const NeuralNetwork& brain, ImVec2 pos, ImVec2 size) {
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    
-    float nodeRadius = 8.0f;
-    float layerSpacing = size.x / 3.0f;
-    
-    int inputCount = brain.inputSize;
-    float inputSpacing = size.y / (inputCount + 1);
-    std::vector<ImVec2> inputNodes;
-    for (int i = 0; i < inputCount; ++i) {
-        ImVec2 nodePos(pos.x, pos.y + inputSpacing * (i + 1));
-        inputNodes.push_back(nodePos);
-        draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(100, 200, 255, 200));
-    }
-    
-    int hiddenCount = brain.hiddenSize;
-    float hiddenSpacing = size.y / (hiddenCount + 1);
-    std::vector<ImVec2> hiddenNodes;
-    for (int i = 0; i < hiddenCount; ++i) {
-        ImVec2 nodePos(pos.x + layerSpacing, pos.y + hiddenSpacing * (i + 1));
-        hiddenNodes.push_back(nodePos);
-        draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(255, 200, 100, 200));
-    }
-    
-    int outputCount = brain.outputSize;
-    float outputSpacing = size.y / (outputCount + 1);
-    std::vector<ImVec2> outputNodes;
-    for (int i = 0; i < outputCount; ++i) {
-        ImVec2 nodePos(pos.x + layerSpacing * 2, pos.y + outputSpacing * (i + 1));
-        outputNodes.push_back(nodePos);
-        draw->AddCircleFilled(nodePos, nodeRadius, IM_COL32(100, 255, 150, 200));
-    }
-    
-    int wIdx = 0;
-    for (int h = 0; h < hiddenCount; ++h) {
-        for (int i = 0; i < inputCount; ++i) {
-            float w = brain.weights[wIdx++];
-            ImU32 color = w > 0 ? IM_COL32(100, 255, 100, 100) : IM_COL32(255, 100, 100, 100);
-            float thickness = std::abs(w) * 2.0f;
-            draw->AddLine(inputNodes[i], hiddenNodes[h], color, thickness);
-        }
-    }
-    
-    for (int o = 0; o < outputCount; ++o) {
-        for (int h = 0; h < hiddenCount; ++h) {
-            float w = brain.weights[wIdx++];
-            ImU32 color = w > 0 ? IM_COL32(100, 255, 100, 100) : IM_COL32(255, 100, 100, 100);
-            float thickness = std::abs(w) * 2.0f;
-            draw->AddLine(hiddenNodes[h], outputNodes[o], color, thickness);
-        }
-    }
-}
+
 
 void DrawPhenotypePanel(UIState& ui, World& world) {
     ImGui::Begin("Phenotype Evolution", &ui.showPhenotypePanel);
@@ -120,9 +71,9 @@ void DrawGodModePanel(UIState& ui, World& world) {
     ImGui::Text("Click on world to spawn/modify");
     ImGui::Separator();
     
-    const char* tools[] = { "None", "Spawn Fruit", "Spawn Poison", "Spawn Agent", "Erase" };
+    const char* tools[] = { "None", "Spawn Fruit", "Spawn Poison", "Spawn Agent", "Spawn RNN Agent", "Erase" };
     int currentTool = (int)ui.currentTool;
-    if (ImGui::Combo("Tool", &currentTool, tools, 5)) {
+    if (ImGui::Combo("Tool", &currentTool, tools, 6)) {
         ui.currentTool = (UIState::SpawnTool)currentTool;
     }
     
@@ -308,17 +259,15 @@ void DrawNeuralVizPanel(UIState& ui, World& world) {
             ImVec2 vizSize(400, 300);
             ImVec2 cursorPos = ImGui::GetCursorScreenPos();
             
-            DrawNeuralNetwork(agent.brain, cursorPos, vizSize);
+            agent.brain->Draw(cursorPos, vizSize);
             
             ImGui::Dummy(vizSize);
             
             ImGui::Separator();
             ImGui::Text("Network Architecture:");
-            ImGui::Text("Input: %d neurons", agent.brain.inputSize);
-            ImGui::Text("Hidden: %d neurons", agent.brain.hiddenSize);
-            ImGui::Text("Output: %d neurons", agent.brain.outputSize);
-            ImGui::Text("Total weights: %zu", agent.brain.weights.size());
-            ImGui::Text("Total biases: %zu", agent.brain.biases.size());
+            ImGui::Text("Type: %s", agent.brain->GetType().c_str());
+            ImGui::Text("Input: %d", agent.brain->GetInputSize());
+            ImGui::Text("Output: %d", agent.brain->GetOutputSize());
             
             if (Config::ENABLE_LIFETIME_LEARNING) {
                 ImGui::Separator();
@@ -352,6 +301,14 @@ void HandleGodModeInput(UIState& ui, World& world) {
             case UIState::SpawnTool::Agent:
                 world.agents.emplace_back(mouseWorld);
                 break;
+            case UIState::SpawnTool::AgentRNN: {
+                Agent a(mouseWorld);
+                // Replace default NN with RNN
+                a.brain = std::make_unique<RNNBrain>(6, 8, 2);
+                a.sex = (rand() % 2 == 0) ? Sex::Male : Sex::Female;
+                world.agents.push_back(std::move(a));
+                break;
+            }
             case UIState::SpawnTool::Erase: {
                 float eraseRadius = 30.0f;
                 for (auto& f : world.fruits) {

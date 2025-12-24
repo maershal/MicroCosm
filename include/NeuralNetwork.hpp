@@ -1,7 +1,7 @@
-#pragma once
-#include <vector>
+#include "Brain.hpp"
+#include <string>
 
-struct NeuralNetwork {
+struct NeuralNetwork : public IBrain {
     int inputSize, hiddenSize, outputSize;
     std::vector<float> weights;
     std::vector<float> biases;
@@ -12,11 +12,18 @@ struct NeuralNetwork {
 
     NeuralNetwork(int inp, int hid, int out);
 
-    std::vector<float> FeedForward(const std::vector<float>& inputs);
-    void Mutate(float rate, float strength);
+    // IBrain implementation
+    std::vector<float> FeedForward(const std::vector<float>& inputs) override;
+    void Mutate(float rate, float strength) override;
+    std::unique_ptr<IBrain> Crossover(const IBrain& other) const override;
+    std::unique_ptr<IBrain> Clone() const override;
+    void LearnFromReward(float reward, float learningRate) override;
+    void Draw(ImVec2 pos, ImVec2 size) override;
     
-    void Backpropagate(const std::vector<float>& targetOutput, float learningRate);
-    void LearnFromReward(float reward, float learningRate);
-    
-    static NeuralNetwork Crossover(const NeuralNetwork& a, const NeuralNetwork& b);
+    int GetInputSize() const override { return inputSize; }
+    int GetOutputSize() const override { return outputSize; }
+    std::string GetType() const override { return "FeedForwardNN"; }
+
+    // Static helper for legacy/direct usage if needed, though Crossover override handles dispatch
+    static NeuralNetwork CrossoverStatic(const NeuralNetwork& a, const NeuralNetwork& b);
 };

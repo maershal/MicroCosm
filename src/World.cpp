@@ -314,29 +314,29 @@ void World::InitPopulation() {
         // Elite preservation - use safe spawn
         for(int i = 0; i < eliteAgents && i < savedGenetics.size(); i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
-            agents.emplace_back(startPos, savedGenetics[i].brain, savedGenetics[i].phenotype);
+            agents.emplace_back(startPos, *savedGenetics[i].brain, savedGenetics[i].phenotype);
         }
         
         // Weak mutation - use safe spawn
         for(int i = 0; i < weakMutationAgents; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
             int parentIdx = rand() % savedGenetics.size();
-            NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
-            childBrain.Mutate(0.15f, 0.08f);
+            std::unique_ptr<IBrain> childBrain = savedGenetics[parentIdx].brain->Clone();
+            childBrain->Mutate(0.15f, 0.08f);
             Phenotype childPheno = savedGenetics[parentIdx].phenotype;
             childPheno.Mutate(0.1f);
-            agents.emplace_back(startPos, childBrain, childPheno);
+            agents.emplace_back(startPos, *childBrain, childPheno);
         }
         
         // Strong mutation - use safe spawn
         for(int i = 0; i < strongMutationAgents; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
             int parentIdx = rand() % savedGenetics.size();
-            NeuralNetwork childBrain = savedGenetics[parentIdx].brain;
-            childBrain.Mutate(0.3f, 0.25f);
+            std::unique_ptr<IBrain> childBrain = savedGenetics[parentIdx].brain->Clone();
+            childBrain->Mutate(0.3f, 0.25f);
             Phenotype childPheno = savedGenetics[parentIdx].phenotype;
             childPheno.Mutate(0.3f);
-            agents.emplace_back(startPos, childBrain, childPheno);
+            agents.emplace_back(startPos, *childBrain, childPheno);
         }
         
         // Random agents - use safe spawn
@@ -512,8 +512,8 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
                             }
                             
                             Agent child(childPos);
-                            child.brain = NeuralNetwork::Crossover(agent.brain, partner.brain);
-                            child.brain.Mutate(0.1f, 0.15f);
+                            child.brain = agent.brain->Crossover(*partner.brain);
+                            child.brain->Mutate(0.1f, 0.15f);
                             child.phenotype = Phenotype::Crossover(agent.phenotype, partner.phenotype);
                             child.phenotype.Mutate(0.1f);
                             babies.push_back(child);
@@ -532,7 +532,7 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
     
     if (Config::ENABLE_LIFETIME_LEARNING && reward != 0.0f) {
         agent.totalReward += reward;
-        agent.brain.LearnFromReward(reward, Config::LEARNING_RATE);
+        agent.brain->LearnFromReward(reward, Config::LEARNING_RATE);
     }
 }
 
@@ -567,7 +567,7 @@ void World::Update(float dt) {
             data.obstacleAngle, data.obstacleDist
         };
 
-        auto outputs = agent.brain.FeedForward(inputs);
+        auto outputs = agent.brain->FeedForward(inputs);
 
         float leftTrack = outputs[0];
         float rightTrack = outputs[1];
@@ -591,7 +591,7 @@ void World::Update(float dt) {
             agent.energy -= 5.0f; // Energy penalty for hitting walls
             
             if (Config::ENABLE_LIFETIME_LEARNING) {
-                agent.brain.LearnFromReward(-1.0f, Config::LEARNING_RATE * 1.5f);
+                agent.brain->LearnFromReward(-1.0f, Config::LEARNING_RATE * 1.5f);
             }
             
             // Try sliding along the wall instead of stopping
@@ -655,7 +655,7 @@ void World::Update(float dt) {
             for(const auto& a : agents) if(a.active) activeAgents++;
 
             if (activeAgents <= Config::ACTIVE_AGENTS && fitness > 5.0f) {
-                savedGenetics.push_back({agent.brain, agent.phenotype, fitness});
+                savedGenetics.push_back({*agent.brain, agent.phenotype, fitness});
             }
             continue;
         }

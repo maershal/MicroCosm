@@ -40,12 +40,15 @@ struct SensorData {
 };
 
 struct GeneticRecord {
-    NeuralNetwork brain;
+    std::unique_ptr<IBrain> brain;
     Phenotype phenotype;
     float fitness;
 
-    GeneticRecord(const NeuralNetwork& b, const Phenotype& p, float f)
-    : brain(b), phenotype(p), fitness(f) {}
+    GeneticRecord(const IBrain& b, const Phenotype& p, float f)
+    : brain(b.Clone()), phenotype(p), fitness(f) {}
+    
+    GeneticRecord(GeneticRecord&&) = default;
+    GeneticRecord& operator=(GeneticRecord&&) = default;
 };
 
 class World {
