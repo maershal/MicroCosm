@@ -13,6 +13,7 @@ struct RNNBrain : public IBrain {
     
     // State
     std::vector<float> hiddenState; // Current hidden state
+    std::vector<float> nextHidden;  // Workspace for calculations
     std::vector<float> cachedInputs; // For visual/debug
 
     RNNBrain(int inp, int hid, int out);

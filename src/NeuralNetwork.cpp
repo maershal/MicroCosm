@@ -23,8 +23,6 @@ NeuralNetwork::NeuralNetwork(int inp, int hid, int out)
 
 std::vector<float> NeuralNetwork::FeedForward(const std::vector<float>& inputs) {
     cachedInputs = inputs;
-    std::vector<float> hidden(hiddenSize, 0.0f);
-    std::vector<float> output(outputSize, 0.0f);
     
     int wIdx = 0;
     int bIdx = 0;
@@ -35,20 +33,18 @@ std::vector<float> NeuralNetwork::FeedForward(const std::vector<float>& inputs) 
         for (int j = 0; j < inputSize; ++j) {
             sum += inputs[j] * weights[wIdx++];
         }
-        hidden[i] = std::tanh(sum);
-        cachedHidden[i] = hidden[i];
+        cachedHidden[i] = std::tanh(sum);
     }
 
     // Hidden -> Output
     for (int i = 0; i < outputSize; ++i) {
         float sum = biases[bIdx++];
         for (int j = 0; j < hiddenSize; ++j) {
-            sum += hidden[j] * weights[wIdx++];
+            sum += cachedHidden[j] * weights[wIdx++];
         }
-        output[i] = std::tanh(sum);
-        cachedOutput[i] = output[i];
+        cachedOutput[i] = std::tanh(sum);
     }
-    return output;
+    return cachedOutput;
 }
 
 void NeuralNetwork::Mutate(float rate, float strength) {
@@ -132,8 +128,7 @@ std::unique_ptr<IBrain> NeuralNetwork::Clone() const {
 }
 
 std::unique_ptr<IBrain> NeuralNetwork::Crossover(const IBrain& other) const {
-    const auto* otherNN = dynamic_cast<const NeuralNetwork*>(&other);
-    if (otherNN) {
+    if (auto* otherNN = dynamic_cast<const NeuralNetwork*>(&other)) {
         return std::make_unique<NeuralNetwork>(CrossoverStatic(*this, *otherNN));
     }
     return Clone();

@@ -14,6 +14,7 @@ RNNBrain::RNNBrain(int inp, int hid, int out)
     recurrentWeights.resize(hid * hid);
     outputWeights.resize(hid * out);
     biases.resize(hid);
+    nextHidden.resize(hid);
     
     for (auto& w : inputWeights) w = dist(rng);
     for (auto& w : recurrentWeights) w = dist(rng);
@@ -29,39 +30,26 @@ void RNNBrain::ResetState() {
 
 std::vector<float> RNNBrain::FeedForward(const std::vector<float>& inputs) {
     cachedInputs = inputs;
-    std::vector<float> newHidden(hiddenSize, 0.0f);
+    std::fill(nextHidden.begin(), nextHidden.end(), 0.0f);
     std::vector<float> output(outputSize, 0.0f);
     
     int wRec = 0;
     int wInp = 0;
     
-    // Calculate new hidden state based on Input + Previous Hidden
+    // Calculate new hidden state
     for (int h = 0; h < hiddenSize; ++h) {
         float sum = biases[h];
-        
-        // Input contribution
-        for (int i = 0; i < inputSize; ++i) {
-            sum += inputs[i] * inputWeights[wInp++];
-        }
-        
-        // Recurrent contribution (from previous time step)
-        for (int ph = 0; ph < hiddenSize; ++ph) {
-            sum += hiddenState[ph] * recurrentWeights[wRec++];
-        }
-        
-        newHidden[h] = std::tanh(sum);
+        for (int i = 0; i < inputSize; ++i) sum += inputs[i] * inputWeights[wInp++];
+        for (int ph = 0; ph < hiddenSize; ++ph) sum += hiddenState[ph] * recurrentWeights[wRec++];
+        nextHidden[h] = std::tanh(sum);
     }
     
-    // Update state
-    hiddenState = newHidden;
+    hiddenState = nextHidden;
     
-    // Calculate output
     int wOut = 0;
     for (int o = 0; o < outputSize; ++o) {
         float sum = 0.0f;
-        for (int h = 0; h < hiddenSize; ++h) {
-            sum += hiddenState[h] * outputWeights[wOut++];
-        }
+        for (int h = 0; h < hiddenSize; ++h) sum += hiddenState[h] * outputWeights[wOut++];
         output[o] = std::tanh(sum);
     }
     

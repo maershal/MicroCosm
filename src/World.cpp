@@ -92,16 +92,7 @@ void World::GenerateRandomObstacles() {
         Vector2 size = {RandomFloat(60, 120), RandomFloat(60, 120)};
         
         // Random obstacle type
-        int typeChoice = rand() % 4;
-        ObstacleType type;
-        switch (typeChoice) {
-            case 0: type = ObstacleType::Wall; break;
-            case 1: type = ObstacleType::Circle; break;
-            case 2: type = ObstacleType::L_Shape; break;
-            case 3: type = ObstacleType::Corridor; break;
-            default: type = ObstacleType::Wall;
-        }
-        
+        ObstacleType type = (ObstacleType)(int)RandomFloat(0, 4);
         obstacles.push_back(Obstacle(pos, size, type));
     }
 }
@@ -120,7 +111,7 @@ void World::GenerateMaze() {
         if (i < gridSize) {
             float y = 100 + i * cellHeight;
             for (int j = 0; j < gridSize; ++j) {
-                if (rand() % 100 < 60) { // 60% chance of wall segment
+                if (RandomFloat(0, 100) < 60) { // 60% chance of wall segment
                     float x = 100 + j * cellWidth;
                     obstacles.push_back(Obstacle(
                         {x, y}, 
@@ -135,7 +126,7 @@ void World::GenerateMaze() {
         if (i < gridSize) {
             float x = 100 + i * cellWidth;
             for (int j = 0; j < gridSize; ++j) {
-                if (rand() % 100 < 60) { // 60% chance of wall segment
+                if (RandomFloat(0, 100) < 60) { // 60% chance of wall segment
                     float y = 100 + j * cellHeight;
                     obstacles.push_back(Obstacle(
                         {x, y}, 
@@ -150,7 +141,7 @@ void World::GenerateMaze() {
     // Add some circular obstacles at intersections
     for (int i = 1; i < gridSize; ++i) {
         for (int j = 1; j < gridSize; ++j) {
-            if (rand() % 100 < 30) {
+            if (RandomFloat(0, 100) < 30) {
                 float x = 100 + i * cellWidth - 20;
                 float y = 100 + j * cellHeight - 20;
                 obstacles.push_back(Obstacle({x, y}, {40, 40}, ObstacleType::Circle));
@@ -221,14 +212,14 @@ void World::GenerateRooms() {
         float y = roomPositions[i][1];
         
         // Add 1-3 obstacles per room
-        int obstacleCount = 1 + rand() % 3;
+        int obstacleCount = 1 + (int)RandomFloat(0, 3);
         for (int j = 0; j < obstacleCount; ++j) {
             float offsetX = RandomFloat(-80, 80);
             float offsetY = RandomFloat(-80, 80);
             Vector2 obsPos = {x + offsetX, y + offsetY};
             Vector2 obsSize = {RandomFloat(30, 70), RandomFloat(30, 70)};
             
-            ObstacleType type = (rand() % 2 == 0) ? ObstacleType::Circle : ObstacleType::Wall;
+            ObstacleType type = (RandomFloat(0, 2) < 1) ? ObstacleType::Circle : ObstacleType::Wall;
             obstacles.push_back(Obstacle(obsPos, obsSize, type));
         }
     }
@@ -320,7 +311,7 @@ void World::InitPopulation() {
         // Weak mutation - use safe spawn
         for(int i = 0; i < weakMutationAgents; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
-            int parentIdx = rand() % savedGenetics.size();
+            int parentIdx = (int)RandomFloat(0, savedGenetics.size());
             std::unique_ptr<IBrain> childBrain = savedGenetics[parentIdx].brain->Clone();
             childBrain->Mutate(0.15f, 0.08f);
             Phenotype childPheno = savedGenetics[parentIdx].phenotype;
@@ -331,7 +322,7 @@ void World::InitPopulation() {
         // Strong mutation - use safe spawn
         for(int i = 0; i < strongMutationAgents; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
-            int parentIdx = rand() % savedGenetics.size();
+            int parentIdx = (int)RandomFloat(0, savedGenetics.size());
             std::unique_ptr<IBrain> childBrain = savedGenetics[parentIdx].brain->Clone();
             childBrain->Mutate(0.3f, 0.25f);
             Phenotype childPheno = savedGenetics[parentIdx].phenotype;
@@ -374,16 +365,8 @@ void World::InitPopulation() {
 
 template <typename T>
 void World::CleanupEntities(std::vector<T>& entities) {
-    size_t aliveCount = 0;
-    for (size_t i = 0; i < entities.size(); ++i) {
-        if (entities[i].active) {
-            if (i != aliveCount) {
-                entities[aliveCount] = std::move(entities[i]);
-            }
-            aliveCount++;
-        }
-    }
-    entities.resize(aliveCount);
+    entities.erase(std::remove_if(entities.begin(), entities.end(), 
+                   [](const T& e) { return !e.active; }), entities.end());
 }
 
 SensorData World::ScanSurroundings(Agent& agent) {
@@ -554,113 +537,12 @@ void World::Update(float dt) {
     for(auto& agent : agents) {
         if (!agent.active) continue;
         
-        agent.lifespan += dt;
         activeCount++;
         totalSpeed += agent.phenotype.speed;
         totalSize += agent.phenotype.size;
         totalEfficiency += agent.phenotype.efficiency;
 
-        SensorData data = ScanSurroundings(agent);
-        std::vector<float> inputs = {
-            data.fruitAngle, data.fruitDist, 
-            data.poisonAngle, data.poisonDist,
-            data.obstacleAngle, data.obstacleDist
-        };
-
-        auto outputs = agent.brain->FeedForward(inputs);
-
-        float leftTrack = outputs[0];
-        float rightTrack = outputs[1];
-        float rotSpeed = 3.0f;
-        float moveSpeed = 120.0f * agent.phenotype.GetActualSpeed();
-
-        agent.angle += (leftTrack - rightTrack) * rotSpeed * dt;
-        Vector2 forward = { cos(agent.angle), sin(agent.angle) };
-        float throttle = (leftTrack + rightTrack) / 2.0f;
-        if(throttle < -0.2f) throttle = -0.2f;
-
-        Vector2 newPos = Vector2Add(agent.pos, Vector2Scale(forward, throttle * moveSpeed * dt));
-        
-        // Check collision before moving
-        float agentRadius = agent.phenotype.GetVisualSize();
-        if (!CheckObstacleCollision(newPos, agentRadius)) {
-            agent.pos = newPos;
-        } else {
-            // Collision detected - apply significant penalty
-            agent.obstaclesHit++;
-            agent.energy -= 5.0f; // Energy penalty for hitting walls
-            
-            if (Config::ENABLE_LIFETIME_LEARNING) {
-                agent.brain->LearnFromReward(-1.0f, Config::LEARNING_RATE * 1.5f);
-            }
-            
-            // Try sliding along the wall instead of stopping
-            Vector2 slideDir = {-forward.y, forward.x};
-            Vector2 slidePos1 = Vector2Add(agent.pos, Vector2Scale(slideDir, throttle * moveSpeed * dt * 0.5f));
-            Vector2 slidePos2 = Vector2Add(agent.pos, Vector2Scale(slideDir, -throttle * moveSpeed * dt * 0.5f));
-            
-            if (!CheckObstacleCollision(slidePos1, agentRadius)) {
-                agent.pos = slidePos1;
-            } else if (!CheckObstacleCollision(slidePos2, agentRadius)) {
-                agent.pos = slidePos2;
-            }
-            // else stay in place
-        }
-
-        Vector2 wrappedPos = agent.pos;
-        bool needsWrap = false;
-        
-        if (agent.pos.x < 0) {
-            wrappedPos.x = Config::SCREEN_W;
-            needsWrap = true;
-        }
-        if (agent.pos.x > Config::SCREEN_W) {
-            wrappedPos.x = 0;
-            needsWrap = true;
-        }
-        if (agent.pos.y < 0) {
-            wrappedPos.y = Config::SCREEN_H;
-            needsWrap = true;
-        }
-        if (agent.pos.y > Config::SCREEN_H) {
-            wrappedPos.y = 0;
-            needsWrap = true;
-        }
-        
-        // Only wrap if the wrapped position is safe
-        if (needsWrap) {
-            if (!CheckObstacleCollision(wrappedPos, agentRadius)) {
-                agent.pos = wrappedPos;
-            } else {
-                // Can't wrap, push back into bounds
-                agent.pos.x = std::clamp(agent.pos.x, agentRadius, Config::SCREEN_W - agentRadius);
-                agent.pos.y = std::clamp(agent.pos.y, agentRadius, Config::SCREEN_H - agentRadius);
-            }
-        }
-
-        float metabolismRate = Config::METABOLISM_RATE * agent.phenotype.GetMetabolicRate();
-        agent.energy -= metabolismRate * dt;
-        
-        if (agent.energy <= 0) {
-            agent.active = false;
-            stats.deaths++;
-            
-            float fitness = agent.CalculateFitness();
-            stats.totalFitness += fitness;
-            if (fitness > stats.bestFitness) {
-                stats.bestFitness = fitness;
-            }
-
-            size_t activeAgents = 0;
-            for(const auto& a : agents) if(a.active) activeAgents++;
-
-            if (activeAgents <= Config::ACTIVE_AGENTS && fitness > 5.0f) {
-                savedGenetics.push_back({*agent.brain, agent.phenotype, fitness});
-            }
-            continue;
-        }
-
-        HandleInteractions(agent, babies);
+        UpdateAgent(agent, dt, babies);
     }
     
     if (activeCount > 0) {
@@ -670,8 +552,8 @@ void World::Update(float dt) {
     }
 
     if (!babies.empty()) {
-        stats.births += babies.size();
-        agents.insert(agents.end(), babies.begin(), babies.end());
+        stats.births += (int)babies.size();
+        agents.insert(agents.end(), std::make_move_iterator(babies.begin()), std::make_move_iterator(babies.end()));
     }
 
     CleanupEntities(agents);
@@ -694,7 +576,91 @@ void World::Update(float dt) {
         InitPopulation();
         stats.totalFitness = 0.0f;
     }
-    if (agents.size() > stats.maxPop) stats.maxPop = agents.size();
+    if (agents.size() > (size_t)stats.maxPop) stats.maxPop = (int)agents.size();
+}
+
+void World::UpdateAgent(Agent& agent, float dt, std::vector<Agent>& babies) {
+    agent.lifespan += dt;
+
+    SensorData data = ScanSurroundings(agent);
+    std::vector<float> inputs = {
+        data.fruitAngle, data.fruitDist, 
+        data.poisonAngle, data.poisonDist,
+        data.obstacleAngle, data.obstacleDist
+    };
+
+    auto outputs = agent.brain->FeedForward(inputs);
+
+    float leftTrack = outputs[0];
+    float rightTrack = outputs[1];
+    float rotSpeed = 3.0f;
+    float moveSpeed = 120.0f * agent.phenotype.GetActualSpeed();
+
+    agent.angle += (leftTrack - rightTrack) * rotSpeed * dt;
+    Vector2 forward = { cos(agent.angle), sin(agent.angle) };
+    float throttle = std::clamp((leftTrack + rightTrack) / 2.0f, -0.2f, 1.0f);
+
+    Vector2 newPos = Vector2Add(agent.pos, Vector2Scale(forward, throttle * moveSpeed * dt));
+    
+    // Check collision before moving
+    float agentRadius = agent.phenotype.GetVisualSize();
+    if (!CheckObstacleCollision(newPos, agentRadius)) {
+        agent.pos = newPos;
+    } else {
+        // Collision detected
+        agent.obstaclesHit++;
+        agent.energy -= Config::COLLISION_ENERGY_PENALTY; 
+        
+        if (Config::ENABLE_LIFETIME_LEARNING) {
+            agent.brain->LearnFromReward(-1.0f, Config::LEARNING_RATE * Config::COLLISION_LEARNING_BOOST);
+        }
+        
+        // Sliding logic
+        Vector2 slideDir = {-forward.y, forward.x};
+        Vector2 slidePos1 = Vector2Add(agent.pos, Vector2Scale(slideDir, throttle * moveSpeed * dt * 0.5f));
+        Vector2 slidePos2 = Vector2Add(agent.pos, Vector2Scale(slideDir, -throttle * moveSpeed * dt * 0.5f));
+        
+        if (!CheckObstacleCollision(slidePos1, agentRadius)) {
+            agent.pos = slidePos1;
+        } else if (!CheckObstacleCollision(slidePos2, agentRadius)) {
+            agent.pos = slidePos2;
+        }
+    }
+
+    // Screen wrapping with safety check
+    Vector2 wrappedPos = agent.pos;
+    bool needsWrap = false;
+    if (agent.pos.x < 0) { wrappedPos.x = Config::SCREEN_W; needsWrap = true; }
+    else if (agent.pos.x > Config::SCREEN_W) { wrappedPos.x = 0; needsWrap = true; }
+    if (agent.pos.y < 0) { wrappedPos.y = Config::SCREEN_H; needsWrap = true; }
+    else if (agent.pos.y > Config::SCREEN_H) { wrappedPos.y = 0; needsWrap = true; }
+    
+    if (needsWrap && !CheckObstacleCollision(wrappedPos, agentRadius)) {
+        agent.pos = wrappedPos;
+    } else if (needsWrap) {
+        agent.pos.x = std::clamp(agent.pos.x, agentRadius, Config::SCREEN_W - agentRadius);
+        agent.pos.y = std::clamp(agent.pos.y, agentRadius, Config::SCREEN_H - agentRadius);
+    }
+
+    float metabolismRate = Config::METABOLISM_RATE * agent.phenotype.GetMetabolicRate();
+    agent.energy -= metabolismRate * dt;
+    
+    if (agent.energy <= 0) {
+        agent.active = false;
+        stats.deaths++;
+        
+        float fitness = agent.CalculateFitness();
+        stats.totalFitness += fitness;
+        if (fitness > stats.bestFitness) stats.bestFitness = fitness;
+
+        size_t activeCount = std::count_if(agents.begin(), agents.end(), [](const Agent& a){ return a.active; });
+        if (activeCount <= (size_t)Config::ACTIVE_AGENTS && fitness > 5.0f) {
+            savedGenetics.push_back({*agent.brain, agent.phenotype, fitness});
+        }
+        return;
+    }
+
+    HandleInteractions(agent, babies);
 }
 
 void World::Draw() {

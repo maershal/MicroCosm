@@ -75,6 +75,7 @@ public:
 
 private:
     void InitPopulation();
+    void UpdateAgent(Agent& agent, float dt, std::vector<Agent>& babies);
     SensorData ScanSurroundings(Agent& agent);
     void HandleInteractions(Agent& agent, std::vector<Agent>& babies);
     bool CheckObstacleCollision(Vector2 pos, float radius);

@@ -49,7 +49,7 @@ inline float RandomFloat(float min, float max) {
 }
 
 inline float NormalizeAngle(float angle) {
-    while (angle > PI) angle -= 2 * PI;
-    while (angle < -PI) angle += 2 * PI;
-    return angle;
+    angle = std::fmod(angle + PI, 2.0f * PI);
+    if (angle < 0) angle += 2.0f * PI;
+    return angle - PI;
 }
