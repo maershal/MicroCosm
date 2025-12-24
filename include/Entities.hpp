@@ -16,6 +16,8 @@ struct Poison {
     bool active = true; 
 };
 
+enum class Species { Herbivore, Scavenger, Predator };
+
 // Obstacle types for variety
 enum class ObstacleType { 
     Wall,      // Solid rectangular wall
@@ -41,17 +43,24 @@ struct Obstacle {
 };
 
 struct Phenotype {
+    Species species = Species::Herbivore;
     float speed = 1.0f;      // Movement speed multiplier (0.5 - 2.0)
     float size = 1.0f;       // Body size multiplier (0.7 - 1.5)
     float efficiency = 1.0f; // Metabolic efficiency (0.7 - 1.3)
     
     Phenotype() {
+        // Random species probability
+        float r = RandomFloat(0,1);
+        if(r < 0.6f) species = Species::Herbivore;
+        else if(r < 0.85f) species = Species::Scavenger;
+        else species = Species::Predator;
+        
         speed = RandomFloat(0.8f, 1.2f);
         size = RandomFloat(0.85f, 1.15f);
         efficiency = RandomFloat(0.9f, 1.1f);
     }
     
-    Phenotype(float s, float sz, float e) : speed(s), size(sz), efficiency(e) {}
+    Phenotype(Species sp, float s, float sz, float e) : species(sp), speed(s), size(sz), efficiency(e) {}
     
     float GetActualSpeed() const {
         return speed * (2.0f - size * Config::SIZE_SPEED_MULTIPLIER);
@@ -67,6 +76,7 @@ struct Phenotype {
     
     static Phenotype Crossover(const Phenotype& a, const Phenotype& b) {
         return Phenotype(
+            RandomFloat(0, 1) > 0.5f ? a.species : b.species,
             RandomFloat(0, 1) > 0.5f ? a.speed : b.speed,
             RandomFloat(0, 1) > 0.5f ? a.size : b.size,
             RandomFloat(0, 1) > 0.5f ? a.efficiency : b.efficiency
@@ -74,6 +84,12 @@ struct Phenotype {
     }
     
     void Mutate(float rate) {
+        if (RandomFloat(0, 1) < rate * 0.1f) { // Very low chance to change species
+             float r = RandomFloat(0,1);
+             if(r < 0.6f) species = Species::Herbivore;
+             else if(r < 0.85f) species = Species::Scavenger;
+             else species = Species::Predator;
+        }
         if (RandomFloat(0, 1) < rate) {
             speed = std::clamp(speed + RandomFloat(-0.1f, 0.1f), 0.5f, 2.0f);
         }
@@ -108,13 +124,16 @@ struct Agent {
     Vector2 targetFruit = {-1, -1};
     Vector2 targetPoison = {-1, -1};
     
+    float pheromoneEmission = 0.0f; // Output
+    float pheromoneDetected = 0.0f; // Input
+
     Agent() : pos({0,0}), angle(0), energy(0), sex(Sex::Male) {
-        brain = std::make_unique<NeuralNetwork>(6, 8, 2);
+        brain = std::make_unique<NeuralNetwork>(7, 8, 3);
     }
     
     Agent(Vector2 p) : pos(p), angle(RandomFloat(0, 2*PI)), energy(Config::AGENT_START_ENERGY), 
                        sex(RandomFloat(0,1) > 0.5f ? Sex::Male : Sex::Female) {
-        brain = std::make_unique<NeuralNetwork>(6, 8, 2);
+        brain = std::make_unique<NeuralNetwork>(7, 8, 3);
     }
     
     Agent(Vector2 p, const IBrain& net, const Phenotype& pheno) 

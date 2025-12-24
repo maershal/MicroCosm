@@ -1,18 +1,53 @@
 #pragma once
 #include <vector>
+#include <vector>
 #include "Entities.hpp"
 
+enum class Season { Spring, Summer, Autumn, Winter };
+
+struct SeasonState {
+    Season currentSeason = Season::Spring;
+    float seasonTimer = 0.0f;
+    float seasonDuration = 30.0f; // Seconds per season
+    const char* GetName() const {
+        switch(currentSeason) {
+            case Season::Spring: return "Spring";
+            case Season::Summer: return "Summer";
+            case Season::Autumn: return "Autumn";
+            case Season::Winter: return "Winter";
+            default: return "Unknown";
+        }
+    }
+};
+
 struct SpatialGrid {
-    std::vector<int> fruitIndices[Config::GRID_W][Config::GRID_H];
-    std::vector<int> poisonIndices[Config::GRID_W][Config::GRID_H];
-    std::vector<int> agentIndices[Config::GRID_W][Config::GRID_H];
-    std::vector<int> obstacleIndices[Config::GRID_W][Config::GRID_H];
+    // Flattened grid: cells[x * GRID_H + y]
+    // Vector of Vectors for ID lists
+    std::vector<std::vector<int>> fruitIndices;
+    std::vector<std::vector<int>> poisonIndices;
+    std::vector<std::vector<int>> agentIndices;
+    std::vector<std::vector<int>> obstacleIndices;
+
+    void Resize(int w, int h) {
+        int size = w * h;
+        fruitIndices.assign(size, {});
+        poisonIndices.assign(size, {});
+        agentIndices.assign(size, {});
+        obstacleIndices.assign(size, {});
+    }
 
     void Clear();
     void AddFruit(int index, Vector2 pos);
     void AddPoison(int index, Vector2 pos);
     void AddAgent(int index, Vector2 pos);
     void AddObstacle(int index, Vector2 pos, Vector2 size);
+    
+    // Helper to get cell index safely
+    int GetCellIndex(int x, int y) const {
+        if (x < 0) x = 0; if (x >= Config::GRID_W) x = Config::GRID_W - 1;
+        if (y < 0) y = 0; if (y >= Config::GRID_H) y = Config::GRID_H - 1;
+        return x * Config::GRID_H + y;
+    }
 };
 
 struct Stats {
@@ -35,6 +70,13 @@ struct Stats {
         float avgSpeed;
         float avgSize;
         int population;
+        int herbivoreCount;
+        int scavengerCount;
+        int predatorCount;
+        
+        int countRNN;
+        int countNEAT;
+        int countNN;
     };
     std::vector<HistoryPoint> history;
 };
@@ -46,6 +88,7 @@ struct SensorData {
     float poisonAngle = 0.0f;
     float obstacleDist = 1.0f;
     float obstacleAngle = 0.0f;
+    float pheromoneIntensity = 0.0f;
 };
 
 struct GeneticRecord {
@@ -68,6 +111,7 @@ public:
     std::vector<Obstacle> obstacles;
     SpatialGrid grid;
     Stats stats;
+    SeasonState season;
 
     World();
     void Update(float dt);
@@ -81,6 +125,14 @@ public:
     void ClearObstacles();
     
     Vector2 FindSafeSpawnPosition(float minRadius = 10.0f, int maxAttempts = 50);
+    
+    // God Mode Powers
+    void ThanosSnap();
+    void FertilityBlessing();
+    void ForceMutation();
+    void SpawnSpecies(Species type, int count);
+
+    void UpdateSeasons(float dt);
 
 private:
     void InitPopulation();

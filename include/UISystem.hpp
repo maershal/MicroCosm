@@ -31,4 +31,5 @@ private:
     void DrawNeuralVizPanel(UIState& ui, World& world);
     void DrawPhenotypePanel(UIState& ui, World& world);
     void DrawAnalyticsPanel(UIState& ui, World& world);
+    void DrawSpeciesLegendPanel(UIState& ui, World& world);
 };

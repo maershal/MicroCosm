@@ -23,13 +23,13 @@ void HandleGodModeInput(UIState& ui, World& world) {
             case UIState::SpawnTool::Agent: world.agents.emplace_back(mouseWorld); break;
             case UIState::SpawnTool::AgentRNN: {
                 Agent a(mouseWorld);
-                a.brain = std::make_unique<RNNBrain>(6, 8, 2);
+                a.brain = std::make_unique<RNNBrain>(7, 8, 3);
                 world.agents.push_back(std::move(a));
                 break;
             }
             case UIState::SpawnTool::AgentNEAT: {
                 Agent a(mouseWorld);
-                a.brain = std::make_unique<NEATBrain>(6, 2);
+                a.brain = std::make_unique<NEATBrain>(7, 3);
                 world.agents.push_back(std::move(a));
                 break;
             }
@@ -83,11 +83,28 @@ int main() {
 
         for (const auto& a : world.agents) {
             if (!a.active) continue;
-            Color col = (a.sex == Sex::Male) ? BLUE : RED;
+            
+            Color col = WHITE;
+            switch(a.phenotype.species) {
+                case Species::Herbivore: col = {100, 255, 100, 255}; break; // Green
+                case Species::Scavenger: col = {255, 165, 0, 255}; break;   // Orange
+                case Species::Predator:  col = {255, 50, 50, 255}; break;   // Red
+            }
             col.a = (unsigned char)(std::max(0.2f, a.energy / Config::AGENT_MAX_ENERGY) * 255);
             
             float visualSize = a.phenotype.GetVisualSize();
+            
+            // Pheromone Aura
+            if(a.pheromoneEmission > 0.1f) {
+                Color aura = {200, 100, 255, (unsigned char)(a.pheromoneEmission * 50)};
+                DrawCircleV(a.pos, visualSize + 10 * a.pheromoneEmission, aura);
+            }
+            
             DrawCircleV(a.pos, visualSize, col);
+            
+            // Sex Indicator
+            Color sexCol = (a.sex == Sex::Male) ? BLUE : PINK;
+            DrawCircleV(a.pos, visualSize * 0.4f, sexCol);
             
             Vector2 head = { a.pos.x + cos(a.angle)*(visualSize + 3), a.pos.y + sin(a.angle)*(visualSize + 3) };
             DrawLineV(a.pos, head, RAYWHITE);

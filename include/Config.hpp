@@ -5,8 +5,8 @@
 #include <iostream>
 
 namespace Config {
-    constexpr int SCREEN_W = 1280;
-    constexpr int SCREEN_H = 720;
+    inline int SCREEN_W = 1280;
+    inline int SCREEN_H = 720;
     inline int FPS = 60;
 
     inline float AGENT_VISION_RADIUS = 200.0f;
@@ -18,10 +18,27 @@ namespace Config {
     inline float POISON_DAMAGE = 50.0f;
     
     constexpr int GRID_CELL_SIZE = 50;
-    constexpr int GRID_W = SCREEN_W / GRID_CELL_SIZE + 1;
-    constexpr int GRID_H = SCREEN_H / GRID_CELL_SIZE + 1;
+    inline int GRID_W = SCREEN_W / GRID_CELL_SIZE + 1;
+    inline int GRID_H = SCREEN_H / GRID_CELL_SIZE + 1;
 
     inline int ACTIVE_AGENTS = 20;
+
+    enum class SimSize { Small, Medium, Large, Huge };
+    inline SimSize CURRENT_SIZE = SimSize::Medium;
+
+    inline void SetWindowSize(SimSize size) {
+        CURRENT_SIZE = size;
+        switch(size) {
+            case SimSize::Small:  SCREEN_W = 800;  SCREEN_H = 600;  break;
+            case SimSize::Medium: SCREEN_W = 1280; SCREEN_H = 720;  break;
+            case SimSize::Large:  SCREEN_W = 1920; SCREEN_H = 1080; break;
+            case SimSize::Huge:   SCREEN_W = 2560; SCREEN_H = 1440; break;
+        }
+        GRID_W = SCREEN_W / GRID_CELL_SIZE + 1;
+        GRID_H = SCREEN_H / GRID_CELL_SIZE + 1;
+        
+        ::SetWindowSize(SCREEN_W, SCREEN_H); // Raylib function - Global scope
+    }
 
     inline float SPEED_ENERGY_MULTIPLIER = 1.5f;
     inline float SIZE_SPEED_MULTIPLIER = 0.8f;
@@ -35,6 +52,29 @@ namespace Config {
     
     inline float COLLISION_ENERGY_PENALTY = 5.0f;
     inline float COLLISION_LEARNING_BOOST = 1.5f;
+
+    // Balancing Variables
+    inline float PREDATOR_STEAL_AMOUNT = 40.0f;
+    inline float HERBIVORE_FRUIT_BONUS = 1.5f;
+    inline float SCAVENGER_POISON_GAIN = 0.8f;
+    inline float PREDATOR_METABOLISM_MODIFIER = 1.0f;
+    inline float SEASON_DURATION = 30.0f;
+    
+    inline float MUTATION_RATE_MULTIPLIER = 1.0f;
+    inline float MATING_ENERGY_COST = 60.0f;
+    
+    inline int FRUIT_SPAWN_AMOUNT = 10;
+    inline int POISON_SPAWN_AMOUNT = 10;
+
+    // Advanced Balancing
+    inline float MATING_ENERGY_THRESHOLD = 120.0f;
+    inline float EAT_RADIUS = 15.0f;
+    inline float MATING_RANGE = 50.0f; // Sqr is 2500
+    
+    inline float CHILD_BRAIN_MUTATION_RATE = 0.1f;
+    inline float CHILD_BRAIN_MUTATION_POWER = 0.15f;
+    inline float CHILD_PHENOTYPE_MUTATION_RATE = 0.1f;
+
 
 }
 

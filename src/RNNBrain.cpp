@@ -76,7 +76,16 @@ std::unique_ptr<IBrain> RNNBrain::Crossover(const IBrain& other) const {
     if (otherRNN) {
         return std::make_unique<RNNBrain>(CrossoverStatic(*this, *otherRNN));
     }
-    return Clone();
+    // Cross-Architecture Fallback: 50% chance to be RNN (cloned+mutated), 50% to be the other type (cloned+mutated)
+    if (RandomFloat(0,1) < 0.5f) {
+        auto child = this->Clone();
+        child->Mutate(0.5f, 0.5f); // High mutation for hybridization
+        return child;
+    } else {
+        auto child = other.Clone();
+        child->Mutate(0.5f, 0.5f); // High mutation
+        return child;
+    }
 }
 
 RNNBrain RNNBrain::CrossoverStatic(const RNNBrain& a, const RNNBrain& b) {

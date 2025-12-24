@@ -130,7 +130,16 @@ struct NEATBrain : public IBrain {
             Genome babyG = Genome::Crossover(this->genome, otherNeat->genome);
             return std::make_unique<NEATBrain>(babyG, inputSize, outputSize);
         }
-        return Clone();
+        // Cross-Architecture Fallback
+        if (RandomFloat(0,1) < 0.5f) {
+            auto child = this->Clone();
+            child->Mutate(0.5f, 0.5f); 
+            return child;
+        } else {
+            auto child = other.Clone();
+            child->Mutate(0.5f, 0.5f);
+            return child;
+        }
     }
     
     std::unique_ptr<IBrain> Clone() const override {

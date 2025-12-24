@@ -3,34 +3,34 @@
 
 // --- Spatial Grid Implementation ---
 void SpatialGrid::Clear() {
-    for(int x=0; x<Config::GRID_W; x++)
-        for(int y=0; y<Config::GRID_H; y++) {
-            fruitIndices[x][y].clear();
-            poisonIndices[x][y].clear();
-            agentIndices[x][y].clear();
-            obstacleIndices[x][y].clear();
-        }
+    int expectedSize = Config::GRID_W * Config::GRID_H;
+    if (fruitIndices.size() != (size_t)expectedSize) Resize(Config::GRID_W, Config::GRID_H);
+    
+    for(auto& list : fruitIndices) list.clear();
+    for(auto& list : poisonIndices) list.clear();
+    for(auto& list : agentIndices) list.clear();
+    for(auto& list : obstacleIndices) list.clear();
 }
 
 void SpatialGrid::AddFruit(int index, Vector2 pos) {
     int gx = (int)pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)pos.y / Config::GRID_CELL_SIZE;
     if (gx >= 0 && gx < Config::GRID_W && gy >= 0 && gy < Config::GRID_H)
-        fruitIndices[gx][gy].push_back(index);
+        fruitIndices[GetCellIndex(gx, gy)].push_back(index);
 }
 
 void SpatialGrid::AddPoison(int index, Vector2 pos) {
     int gx = (int)pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)pos.y / Config::GRID_CELL_SIZE;
     if (gx >= 0 && gx < Config::GRID_W && gy >= 0 && gy < Config::GRID_H)
-        poisonIndices[gx][gy].push_back(index);
+        poisonIndices[GetCellIndex(gx, gy)].push_back(index);
 }
 
 void SpatialGrid::AddAgent(int index, Vector2 pos) {
     int gx = (int)pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)pos.y / Config::GRID_CELL_SIZE;
     if (gx >= 0 && gx < Config::GRID_W && gy >= 0 && gy < Config::GRID_H)
-        agentIndices[gx][gy].push_back(index);
+        agentIndices[GetCellIndex(gx, gy)].push_back(index);
 }
 
 void SpatialGrid::AddObstacle(int index, Vector2 pos, Vector2 size) {
@@ -41,7 +41,7 @@ void SpatialGrid::AddObstacle(int index, Vector2 pos, Vector2 size) {
     
     for (int x = std::max(0, gxStart); x <= std::min(Config::GRID_W - 1, gxEnd); ++x) {
         for (int y = std::max(0, gyStart); y <= std::min(Config::GRID_H - 1, gyEnd); ++y) {
-            obstacleIndices[x][y].push_back(index);
+            obstacleIndices[GetCellIndex(x, y)].push_back(index);
         }
     }
 }
@@ -296,7 +296,13 @@ void World::InitPopulation() {
             savedGenetics.erase(savedGenetics.begin() + 30, savedGenetics.end());
         }
         
-        int totalAgents = 180;
+        // Scale population based on world size
+        int basePop = 120;
+        if (Config::CURRENT_SIZE == Config::SimSize::Small) basePop = 60;
+        else if (Config::CURRENT_SIZE == Config::SimSize::Large) basePop = 200;
+        else if (Config::CURRENT_SIZE == Config::SimSize::Huge) basePop = 350;
+
+        int totalAgents = basePop;
         int randomAgents = totalAgents / 10;
         int eliteAgents = totalAgents / 5;
         int weakMutationAgents = totalAgents / 2 - randomAgents;
@@ -339,21 +345,31 @@ void World::InitPopulation() {
         savedGenetics.clear();
     }
     else {
+        int basePop = 120;
+        if (Config::CURRENT_SIZE == Config::SimSize::Small) basePop = 60;
+        else if (Config::CURRENT_SIZE == Config::SimSize::Large) basePop = 200;
+        else if (Config::CURRENT_SIZE == Config::SimSize::Huge) basePop = 350;
         // First generation - ALSO use safe spawn positions
-        for(int i=0; i<180; i++) {
+        for(int i=0; i<basePop; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
             agents.emplace_back(startPos);
         }
     }
     
-    // Spawn fruits in safe locations
-    for(int i=0; i<60; i++) {
+    // Spawn fruits/poison scaled
+    int baseFruits = 100;
+    int basePoison = 20;
+
+    if (Config::CURRENT_SIZE == Config::SimSize::Small) { baseFruits = 50; basePoison = 10; }
+    else if (Config::CURRENT_SIZE == Config::SimSize::Large) { baseFruits = 150; basePoison = 40; }
+    else if (Config::CURRENT_SIZE == Config::SimSize::Huge) { baseFruits = 250; basePoison = 80; }
+
+    for(int i=0; i<baseFruits; i++) {
         Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         fruits.push_back({pos});
     }
     
-    // Spawn poisons in safe locations
-    for(int i=0; i<20; i++) {
+    for(int i=0; i<basePoison; i++) {
         Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         poisons.push_back({pos});
     }
@@ -388,7 +404,7 @@ SensorData World::ScanSurroundings(Agent& agent) {
         for (int y = gy - range; y <= gy + range; y++) {
             if (x < 0 || x >= Config::GRID_W || y < 0 || y >= Config::GRID_H) continue;
 
-            for (int idx : grid.fruitIndices[x][y]) {
+            for (int idx : grid.fruitIndices[grid.GetCellIndex(x, y)]) {
                 if (!fruits[idx].active) continue;
                 float dSqr = Vector2DistanceSqr(agent.pos, fruits[idx].pos);
                 if (dSqr < minFruitDistSqr) {
@@ -400,7 +416,9 @@ SensorData World::ScanSurroundings(Agent& agent) {
                 }
             }
             
-            for (int idx : grid.poisonIndices[x][y]) {
+
+            
+            for (int idx : grid.poisonIndices[grid.GetCellIndex(x, y)]) {
                 if (!poisons[idx].active) continue;
                 float dSqr = Vector2DistanceSqr(agent.pos, poisons[idx].pos);
                 if (dSqr < minPoisonDistSqr) {
@@ -431,6 +449,32 @@ SensorData World::ScanSurroundings(Agent& agent) {
         }
     }
     
+    // Pheromone Detection
+    // Check neighbors in grid, simpler than all agents
+    float pheromoneSum = 0.0f;
+    int nearbyCount = 0;
+    
+    for (int x = gx - 1; x <= gx + 1; x++) {
+        for (int y = gy - 1; y <= gy + 1; y++) {
+             if (x < 0 || x >= Config::GRID_W || y < 0 || y >= Config::GRID_H) continue;
+             for (int idx : grid.agentIndices[grid.GetCellIndex(x, y)]) {
+                 Agent& other = agents[idx];
+                 if (&other == &agent || !other.active) continue;
+                 
+                 float dSqr = Vector2DistanceSqr(agent.pos, other.pos);
+                 if (dSqr < visionRadiusSqr) {
+                     // Strength falls off with distance
+                     float dist = sqrt(dSqr);
+                     float strength = other.pheromoneEmission * (1.0f - (dist / Config::AGENT_VISION_RADIUS));
+                     pheromoneSum += std::max(0.0f, strength);
+                     nearbyCount++;
+                 }
+             }
+        }
+    }
+    // Normalize input
+    data.pheromoneIntensity = std::tanh(pheromoneSum);
+    
     if (sawPoison) {
         agent.poisonsAvoided++;
     }
@@ -439,7 +483,7 @@ SensorData World::ScanSurroundings(Agent& agent) {
 }
 
 void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
-    float eatRadiusSqr = 15.0f * 15.0f; 
+    float eatRadiusSqr = Config::EAT_RADIUS * Config::EAT_RADIUS; 
     int gx = (int)agent.pos.x / Config::GRID_CELL_SIZE;
     int gy = (int)agent.pos.y / Config::GRID_CELL_SIZE;
     
@@ -449,66 +493,90 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
         for(int y = gy-1; y <= gy+1; y++) {
             if (x < 0 || x >= Config::GRID_W || y < 0 || y >= Config::GRID_H) continue;
             
-            for (int idx : grid.fruitIndices[x][y]) {
+            for (int idx : grid.fruitIndices[grid.GetCellIndex(x, y)]) {
                 if (fruits[idx].active && Vector2DistanceSqr(agent.pos, fruits[idx].pos) < eatRadiusSqr) {
-                    agent.energy = std::min(agent.energy + Config::FRUIT_ENERGY, Config::AGENT_MAX_ENERGY);
+                    float energyGain = Config::FRUIT_ENERGY;
+                    if(agent.phenotype.species == Species::Herbivore) energyGain *= Config::HERBIVORE_FRUIT_BONUS; // Bonus
+                    else if(agent.phenotype.species == Species::Predator) energyGain *= 0.5f; // Penalty (Hardcoded penalty for now, could be config)
+                    
+                    agent.energy = std::min(agent.energy + energyGain, Config::AGENT_MAX_ENERGY);
                     fruits[idx].active = false;
                     agent.fruitsEaten++;
                     reward += 1.0f;
                 }
             }
             
-            for (int idx : grid.poisonIndices[x][y]) {
+
+            
+            for (int idx : grid.poisonIndices[grid.GetCellIndex(x, y)]) {
                 if (poisons[idx].active && Vector2DistanceSqr(agent.pos, poisons[idx].pos) < eatRadiusSqr) {
-                    agent.energy -= Config::POISON_DAMAGE;
+                    if(agent.phenotype.species == Species::Scavenger) {
+                        // Scavengers eat poison as food!
+                        agent.energy = std::min(agent.energy + Config::FRUIT_ENERGY * Config::SCAVENGER_POISON_GAIN, Config::AGENT_MAX_ENERGY);
+                        reward += 1.0f;
+                    } else {
+                        float damage = Config::POISON_DAMAGE;
+                        if(agent.phenotype.species == Species::Herbivore) damage *= 1.2f; // Extra sensitive
+                        agent.energy -= damage;
+                        agent.poisonsAvoided = std::max(0, agent.poisonsAvoided - 5);
+                        reward -= 2.0f;
+                    }
                     poisons[idx].active = false;
-                    agent.poisonsAvoided = std::max(0, agent.poisonsAvoided - 5);
-                    reward -= 2.0f;
                 }
             }
             
-            if (agent.sex == Sex::Female && agent.energy > 120.0f) {
-                 for (int idx : grid.agentIndices[x][y]) {
-                    Agent& partner = agents[idx];
-                    if (&partner == &agent) continue;
-                    if (!partner.active) continue;
-                    if (partner.sex == Sex::Male && partner.energy > 120.0f) {
-                        if (Vector2DistanceSqr(agent.pos, partner.pos) < 2500.0f) {
-                            agent.energy -= 60.0f;
-                            partner.energy -= 60.0f;
-                            
-                            // Spawn child at safe location near parents
-                            Vector2 childBasePos = Vector2Add(agent.pos, partner.pos);
-                            childBasePos = Vector2Scale(childBasePos, 0.5f);
-                            
-                            Vector2 childPos = childBasePos;
-                            // Try to find safe position near parents
-                            for (int attempt = 0; attempt < 10; ++attempt) {
-                                Vector2 testPos = {
-                                    childBasePos.x + RandomFloat(-30, 30),
-                                    childBasePos.y + RandomFloat(-30, 30)
-                                };
-                                if (!CheckObstacleCollision(testPos, 10.0f)) {
-                                    childPos = testPos;
-                                    break;
-                                }
-                            }
-                            
-                            Agent child(childPos);
-                            child.brain = agent.brain->Crossover(*partner.brain);
-                            child.brain->Mutate(0.1f, 0.15f);
-                            child.phenotype = Phenotype::Crossover(agent.phenotype, partner.phenotype);
-                            child.phenotype.Mutate(0.1f);
-                            babies.push_back(child);
-                            
-                            agent.childrenCount++;
-                            partner.childrenCount++;
-                            
+
+            
+            // Interaction with other agents (Mating / Hunting)
+            for (int idx : grid.agentIndices[grid.GetCellIndex(x, y)]) {
+                Agent& other = agents[idx];
+                if (&other == &agent || !other.active) continue;
+                
+                float dSqr = Vector2DistanceSqr(agent.pos, other.pos);
+                if (dSqr < eatRadiusSqr) { // Contact range
+                    
+                    // Predator Hunting logic
+                    if (agent.phenotype.species == Species::Predator && other.phenotype.species != Species::Predator) {
+                        // Steal energy
+                        float stealAmount = Config::PREDATOR_STEAL_AMOUNT * Config::METABOLISM_RATE * 0.1f; // Bite
+                        if (agent.energy < Config::AGENT_MAX_ENERGY) {
+                            agent.energy += stealAmount;
+                            other.energy -= stealAmount * 1.5f; // Victim loses more
                             reward += 0.5f;
-                            return;
                         }
                     }
-                 }
+                    
+                    // Mating Logic (Requires same species)
+                    if (agent.sex == Sex::Female && agent.energy > Config::MATING_ENERGY_THRESHOLD && other.sex == Sex::Male && other.energy > Config::MATING_ENERGY_THRESHOLD) {
+                         // Only mate with same species to keep distinct lines? Or allow hybridization?
+                         // Let's encourage same species mating for specialization stability.
+                         if (agent.phenotype.species == other.phenotype.species) {
+                            if (Vector2DistanceSqr(agent.pos, other.pos) < (Config::MATING_RANGE * Config::MATING_RANGE)) {
+                                agent.energy -= Config::MATING_ENERGY_COST;
+                                other.energy -= Config::MATING_ENERGY_COST;
+                                
+                                Vector2 childBasePos = Vector2Scale(Vector2Add(agent.pos, other.pos), 0.5f);
+                                Vector2 childPos = childBasePos;
+                                for (int attempt = 0; attempt < 10; ++attempt) {
+                                    Vector2 testPos = { childBasePos.x + RandomFloat(-30, 30), childBasePos.y + RandomFloat(-30, 30) };
+                                    if (!CheckObstacleCollision(testPos, 10.0f)) { childPos = testPos; break; }
+                                }
+                                
+                                Agent child(childPos);
+                                child.brain = agent.brain->Crossover(*other.brain);
+                                child.brain->Mutate(Config::CHILD_BRAIN_MUTATION_RATE, Config::CHILD_BRAIN_MUTATION_POWER);
+                                child.phenotype = Phenotype::Crossover(agent.phenotype, other.phenotype);
+                                child.phenotype.Mutate(Config::CHILD_PHENOTYPE_MUTATION_RATE);
+                                babies.push_back(std::move(child)); // Use move
+                                
+                                agent.childrenCount++;
+                                other.childrenCount++;
+                                reward += 2.0f; // High reward for reproduction
+                                return; // One baby per frame per mom
+                            }
+                         }
+                    }
+                }
             }
         }
     }
@@ -522,6 +590,8 @@ void World::HandleInteractions(Agent& agent, std::vector<Agent>& babies) {
 void World::Update(float dt) {
     stats.time += dt;
 
+    UpdateSeasons(dt);
+    
     grid.Clear();
     for(size_t i=0; i<fruits.size(); ++i) if(fruits[i].active) grid.AddFruit(i, fruits[i].pos);
     for(size_t i=0; i<poisons.size(); ++i) if(poisons[i].active) grid.AddPoison(i, poisons[i].pos);
@@ -533,6 +603,13 @@ void World::Update(float dt) {
     // Track phenotype averages
     float totalSpeed = 0, totalSize = 0, totalEfficiency = 0;
     int activeCount = 0;
+    int herbs = 0;
+    int scavs = 0;
+    int preds = 0;
+    
+    int cRNN = 0;
+    int cNEAT = 0;
+    int cNN = 0;
 
     for(auto& agent : agents) {
         if (!agent.active) continue;
@@ -541,6 +618,15 @@ void World::Update(float dt) {
         totalSpeed += agent.phenotype.speed;
         totalSize += agent.phenotype.size;
         totalEfficiency += agent.phenotype.efficiency;
+        
+        if (agent.phenotype.species == Species::Herbivore) herbs++;
+        else if (agent.phenotype.species == Species::Scavenger) scavs++;
+        else if (agent.phenotype.species == Species::Predator) preds++;
+        
+        std::string bType = agent.brain->GetType();
+        if (bType == "RNN") cRNN++;
+        else if (bType == "NEAT") cNEAT++;
+        else cNN++;
 
         UpdateAgent(agent, dt, babies);
     }
@@ -560,11 +646,23 @@ void World::Update(float dt) {
     CleanupEntities(fruits);
     CleanupEntities(poisons);
 
-    if (fruits.size() < 40) {
+    int fruitCap = 60;
+    int poisonCap = 15;
+
+    if (Config::CURRENT_SIZE == Config::SimSize::Small) { fruitCap = 30; poisonCap = 10; }
+    else if (Config::CURRENT_SIZE == Config::SimSize::Large) { fruitCap = 120; poisonCap = 30; }
+    else if (Config::CURRENT_SIZE == Config::SimSize::Huge) { fruitCap = 180; poisonCap = 50; }
+    
+    // Seasonal Effects
+    if (season.currentSeason == Season::Spring) { fruitCap = 120; }
+    else if (season.currentSeason == Season::Winter) { fruitCap = 20; }
+    else if (season.currentSeason == Season::Autumn) { fruitCap = 30; }
+    
+    if (fruits.size() < (size_t)fruitCap) {
         Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         fruits.push_back({pos});
     }
-    if (poisons.size() < 15) {
+    if (poisons.size() < (size_t)poisonCap) {
         Vector2 pos = FindSafeSpawnPosition(5.0f, 30);
         poisons.push_back({pos});
     }
@@ -580,7 +678,13 @@ void World::Update(float dt) {
             stats.bestFitness,
             stats.avgSpeed,
             stats.avgSize,
-            stats.maxPop
+            stats.maxPop,
+            herbs,
+            scavs,
+            preds,
+            cRNN,
+            cNEAT,
+            cNN
         });
         
         InitPopulation();
@@ -593,16 +697,22 @@ void World::UpdateAgent(Agent& agent, float dt, std::vector<Agent>& babies) {
     agent.lifespan += dt;
 
     SensorData data = ScanSurroundings(agent);
+    
+    // Store detected pheromone for visualization/debugging if needed
+    agent.pheromoneDetected = data.pheromoneIntensity;
+    
     std::vector<float> inputs = {
         data.fruitAngle, data.fruitDist, 
         data.poisonAngle, data.poisonDist,
-        data.obstacleAngle, data.obstacleDist
+        data.obstacleAngle, data.obstacleDist,
+        data.pheromoneIntensity
     };
 
     auto outputs = agent.brain->FeedForward(inputs);
 
     float leftTrack = outputs[0];
     float rightTrack = outputs[1];
+    agent.pheromoneEmission = std::clamp(outputs[2], 0.0f, 1.0f); // Output 2 is Pheromone
     float rotSpeed = 3.0f;
     float moveSpeed = 120.0f * agent.phenotype.GetActualSpeed();
 
@@ -653,6 +763,11 @@ void World::UpdateAgent(Agent& agent, float dt, std::vector<Agent>& babies) {
     }
 
     float metabolismRate = Config::METABOLISM_RATE * agent.phenotype.GetMetabolicRate();
+    if (agent.phenotype.species == Species::Predator) metabolismRate *= Config::PREDATOR_METABOLISM_MODIFIER;
+
+    if (season.currentSeason == Season::Winter) metabolismRate *= 1.3f; // Harder to survive in Winter
+    if (season.currentSeason == Season::Spring) metabolismRate *= 0.9f; // Easier in Spring
+    
     agent.energy -= metabolismRate * dt;
     
     if (agent.energy <= 0) {
@@ -679,4 +794,62 @@ void World::Draw() {
             obs.Draw();
         }
     }
+}
+
+void World::UpdateSeasons(float dt) {
+    season.seasonDuration = Config::SEASON_DURATION; // Sync with config
+    season.seasonTimer += dt;
+    if (season.seasonTimer >= season.seasonDuration) {
+        season.seasonTimer = 0.0f;
+        int next = (int)season.currentSeason + 1;
+        if (next > (int)Season::Winter) next = (int)Season::Spring;
+        season.currentSeason = (Season)next;
+    }
+}
+
+// God Mode
+void World::ThanosSnap() {
+    // Balanced perfectly, as all things should be.
+    int killCount = 0;
+    for(auto& agent : agents) {
+        if (!agent.active) continue;
+        if (RandomFloat(0,1) > 0.5f) {
+            agent.energy = -10.0f; // Kill
+            agent.active = false;
+            stats.deaths++; // Make sure deaths are recorded
+            killCount++;
+        }
+    }
+    printf("Thanos Snapped! %d agents dusted.\n", killCount);
+}
+
+void World::FertilityBlessing() {
+    for(auto& agent : agents) {
+        if (agent.active) {
+            agent.energy = Config::AGENT_MAX_ENERGY;
+        }
+    }
+}
+
+void World::ForceMutation() {
+    for(auto& agent : agents) {
+        if (agent.active) {
+            agent.brain->Mutate(0.5f, 0.5f * Config::MUTATION_RATE_MULTIPLIER);
+            agent.phenotype.Mutate(0.5f * Config::MUTATION_RATE_MULTIPLIER);
+        }
+    }
+}
+
+void World::SpawnSpecies(Species type, int count) {
+   for(int i=0; i<count; i++) {
+        Vector2 startPos = FindSafeSpawnPosition(15.0f);
+        Agent a(startPos);
+        a.phenotype.species = type;
+        // Adjust phenotype based on species default
+        if (type == Species::Herbivore) a.phenotype.size = 1.0f;
+        if (type == Species::Predator) { a.phenotype.size = 1.2f; a.phenotype.speed = 1.2f; }
+        if (type == Species::Scavenger) { a.phenotype.efficiency = 1.2f; }
+
+        agents.push_back(std::move(a));
+   }
 }

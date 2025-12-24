@@ -131,7 +131,16 @@ std::unique_ptr<IBrain> NeuralNetwork::Crossover(const IBrain& other) const {
     if (auto* otherNN = dynamic_cast<const NeuralNetwork*>(&other)) {
         return std::make_unique<NeuralNetwork>(CrossoverStatic(*this, *otherNN));
     }
-    return Clone();
+    // Cross-Architecture Fallback
+    if (RandomFloat(0,1) < 0.5f) {
+        auto child = this->Clone();
+        child->Mutate(0.5f, 0.5f); 
+        return child;
+    } else {
+        auto child = other.Clone();
+        child->Mutate(0.5f, 0.5f);
+        return child;
+    }
 }
 
 NeuralNetwork NeuralNetwork::CrossoverStatic(const NeuralNetwork& a, const NeuralNetwork& b) {
