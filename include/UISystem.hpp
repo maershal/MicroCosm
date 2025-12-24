@@ -9,9 +9,10 @@ struct UIState {
     bool showNeuralViz = false;
     bool showAgentStats = false;
     bool showPhenotypePanel = false;
+    bool showAnalytics = false;
     int selectedAgentIdx = -1;
     
-    enum class SpawnTool { None, Fruit, Poison, Agent, AgentRNN, Erase };
+    enum class SpawnTool { None, Fruit, Poison, Agent, AgentRNN, AgentNEAT, Erase };
     SpawnTool currentTool = SpawnTool::None;
     
     Camera2D camera = { 0 };
@@ -29,4 +30,5 @@ private:
     void DrawAgentStatsPanel(UIState& ui, World& world);
     void DrawNeuralVizPanel(UIState& ui, World& world);
     void DrawPhenotypePanel(UIState& ui, World& world);
+    void DrawAnalyticsPanel(UIState& ui, World& world);
 };

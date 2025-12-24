@@ -28,6 +28,15 @@ struct Stats {
     float avgSpeed = 0.0f;
     float avgSize = 0.0f;
     float avgEfficiency = 0.0f;
+    
+    struct HistoryPoint {
+        float avgFitness;
+        float bestFitness;
+        float avgSpeed;
+        float avgSize;
+        int population;
+    };
+    std::vector<HistoryPoint> history;
 };
 
 struct SensorData {

@@ -3,9 +3,11 @@
 #include "Config.hpp"
 #include "Brain.hpp"
 #include "RNNBrain.hpp"
+#include "NEATBrain.hpp"
 #include "UISystem.hpp"
 #include "rlImGui.h"
 #include "imgui.h"
+#include "implot.h"
 #include <algorithm>
 
 void HandleGodModeInput(UIState& ui, World& world) {
@@ -25,6 +27,12 @@ void HandleGodModeInput(UIState& ui, World& world) {
                 world.agents.push_back(std::move(a));
                 break;
             }
+            case UIState::SpawnTool::AgentNEAT: {
+                Agent a(mouseWorld);
+                a.brain = std::make_unique<NEATBrain>(6, 2);
+                world.agents.push_back(std::move(a));
+                break;
+            }
             case UIState::SpawnTool::Erase: {
                 float eraseRadius = 30.0f;
                 for (auto& f : world.fruits) if (f.active && Vector2Distance(f.pos, mouseWorld) < eraseRadius) f.active = false;
@@ -41,6 +49,7 @@ int main() {
     InitWindow(Config::SCREEN_W, Config::SCREEN_H, "MicroCosmSim - Refactored");
     SetTargetFPS(60);
     rlImGuiSetup(true);
+    ImPlot::CreateContext();
     
     World world;
     UISystem uiSystem;
@@ -94,6 +103,7 @@ int main() {
         EndDrawing();
     }
 
+    ImPlot::DestroyContext();
     rlImGuiShutdown();
     CloseWindow();
     return 0;

@@ -1,6 +1,7 @@
 #include "UISystem.hpp"
 #include "rlImGui.h"
 #include "imgui.h"
+#include "implot.h"
 #include "RNNBrain.hpp"
 #include "Config.hpp"
 #include <cstdio>
@@ -16,7 +17,9 @@ void UISystem::Draw(UIState& ui, World& world) {
     if (ui.godMode) DrawGodModePanel(ui, world);
     if (ui.showAgentStats) DrawAgentStatsPanel(ui, world);
     if (ui.showNeuralViz) DrawNeuralVizPanel(ui, world);
+    if (ui.showNeuralViz) DrawNeuralVizPanel(ui, world);
     if (ui.showPhenotypePanel) DrawPhenotypePanel(ui, world);
+    if (ui.showAnalytics) DrawAnalyticsPanel(ui, world);
     
     rlImGuiEnd();
 }
@@ -48,6 +51,7 @@ void UISystem::DrawControlPanel(UIState& ui, World& world) {
     ImGui::Checkbox("Agent Statistics", &ui.showAgentStats);
     ImGui::Checkbox("Neural Network", &ui.showNeuralViz);
     ImGui::Checkbox("Phenotype Evolution", &ui.showPhenotypePanel);
+    ImGui::Checkbox("Analytics", &ui.showAnalytics);
     ImGui::End();
 }
 
@@ -78,9 +82,9 @@ void UISystem::DrawConfigPanel(UIState& ui, World& world) {
 
 void UISystem::DrawGodModePanel(UIState& ui, World& world) {
     ImGui::Begin("God Mode", &ui.godMode);
-    const char* tools[] = { "None", "Fruit", "Poison", "Agent", "Agent RNN", "Erase" };
+    const char* tools[] = { "None", "Fruit", "Poison", "Agent", "Agent RNN", "Agent NEAT", "Erase" };
     int currentTool = (int)ui.currentTool;
-    if (ImGui::Combo("Tool", &currentTool, tools, 6)) ui.currentTool = (UIState::SpawnTool)currentTool;
+    if (ImGui::Combo("Tool", &currentTool, tools, 7)) ui.currentTool = (UIState::SpawnTool)currentTool;
     
     ImGui::Separator();
     if (ImGui::Button("Random Map")) world.GenerateRandomObstacles();
@@ -134,7 +138,42 @@ void UISystem::DrawNeuralVizPanel(UIState& ui, World& world) {
 void UISystem::DrawPhenotypePanel(UIState& ui, World& world) {
     (void)ui;
     ImGui::Begin("Evolution Trends", &ui.showPhenotypePanel);
-    ImGui::Text("Average Speed: %.2f", world.stats.avgSpeed);
     ImGui::Text("Average Size: %.2f", world.stats.avgSize);
+    ImGui::End();
+}
+
+void UISystem::DrawAnalyticsPanel(UIState& ui, World& world) {
+    ImGui::Begin("Analytics", &ui.showAnalytics);
+    
+    if (world.stats.history.empty()) {
+        ImGui::Text("No history data yet. Wait for a generation to complete.");
+    } else {
+        if (ImPlot::BeginPlot("Fitness History")) {
+            std::vector<float> gens, avgFit, bestFit;
+            for(size_t i=0; i<world.stats.history.size(); ++i) {
+                gens.push_back((float)i);
+                avgFit.push_back(world.stats.history[i].avgFitness);
+                bestFit.push_back(world.stats.history[i].bestFitness);
+            }
+            
+            ImPlot::PlotLine("Avg Fitness", gens.data(), avgFit.data(), (int)gens.size());
+            ImPlot::PlotLine("Best Fitness", gens.data(), bestFit.data(), (int)gens.size());
+            ImPlot::EndPlot();
+        }
+        
+        if (ImPlot::BeginPlot("Phenotype Trends")) {
+            std::vector<float> gens, avgSpeed, avgSize;
+            for(size_t i=0; i<world.stats.history.size(); ++i) {
+                gens.push_back((float)i);
+                avgSpeed.push_back(world.stats.history[i].avgSpeed);
+                avgSize.push_back(world.stats.history[i].avgSize);
+            }
+            
+            ImPlot::PlotLine("Avg Speed", gens.data(), avgSpeed.data(), (int)gens.size());
+            ImPlot::PlotLine("Avg Size", gens.data(), avgSize.data(), (int)gens.size());
+            ImPlot::EndPlot();
+        }
+    }
+    
     ImGui::End();
 }

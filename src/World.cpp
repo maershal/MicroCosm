@@ -296,7 +296,7 @@ void World::InitPopulation() {
             savedGenetics.erase(savedGenetics.begin() + 30, savedGenetics.end());
         }
         
-        int totalAgents = 80;
+        int totalAgents = 180;
         int randomAgents = totalAgents / 10;
         int eliteAgents = totalAgents / 5;
         int weakMutationAgents = totalAgents / 2 - randomAgents;
@@ -340,7 +340,7 @@ void World::InitPopulation() {
     }
     else {
         // First generation - ALSO use safe spawn positions
-        for(int i=0; i<80; i++) {
+        for(int i=0; i<180; i++) {
             Vector2 startPos = FindSafeSpawnPosition(15.0f);
             agents.emplace_back(startPos);
         }
@@ -573,6 +573,16 @@ void World::Update(float dt) {
         if (stats.deaths > 0) {
             stats.avgFitness = stats.totalFitness / stats.deaths;
         }
+        
+        // Record history
+        stats.history.push_back({
+            stats.avgFitness,
+            stats.bestFitness,
+            stats.avgSpeed,
+            stats.avgSize,
+            stats.maxPop
+        });
+        
         InitPopulation();
         stats.totalFitness = 0.0f;
     }
